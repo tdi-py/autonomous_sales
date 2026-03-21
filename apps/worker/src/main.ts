@@ -8,7 +8,7 @@ async function bootstrap() {
   });
 
   // Railway process-alive health check için minimal HTTP
-  const port = process.env.PORT ?? 3002;
+  const port = process.env.WORKER_PORT ?? 3002;
   await app.listen(port);
 
   console.log(`⚙️  Worker running — listening for jobs on Redis`);

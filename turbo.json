@@ -1,33 +1,20 @@
-{
+﻿{
   "$schema": "https://turbo.build/schema.json",
-  "globalEnv": [
-    "DATABASE_URL",
-    "REDIS_URL",
-    "NODE_ENV",
-    "PORT",
-    "API_URL",
-    "LLM_PROVIDER",
-    "GROQ_API_KEY",
-    "NEXTAUTH_SECRET",
-    "NEXTAUTH_URL",
-    "GOOGLE_CLIENT_ID",
-    "GOOGLE_CLIENT_SECRET"
-  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+      "outputs": ["dist/**"]
     },
     "dev": {
+      "dependsOn": ["^build"],
       "cache": false,
       "persistent": true
     },
     "lint": {
-      "outputs": []
+      "dependsOn": ["^build"]
     },
     "db:generate": {
-      "cache": false,
-      "outputs": ["drizzle/**"]
+      "cache": false
     },
     "db:migrate": {
       "cache": false

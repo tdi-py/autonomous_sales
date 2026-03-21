@@ -42,3 +42,6 @@ coverage/
 
 # pnpm
 .pnpm-lock.yaml.bak
+# Package build outputs
+packages/shared/dist/
+packages/database/dist/

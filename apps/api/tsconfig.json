@@ -1,4 +1,4 @@
-{
+﻿{
   "compilerOptions": {
     "module": "commonjs",
     "declaration": true,
@@ -23,8 +23,8 @@
     "noFallthroughCasesInSwitch": true,
     "strictPropertyInitialization": false,
     "paths": {
-      "@autonomous-sales/database": ["../../packages/database/src/index.ts"],
-      "@autonomous-sales/shared": ["../../packages/shared/src/index.ts"]
+      "@autonomous-sales/database": ["../../packages/database/dist/index.d.ts"],
+      "@autonomous-sales/shared": ["../../packages/shared/dist/index.d.ts"]
     }
   },
   "include": ["src/**/*"],
