@@ -1,0 +1,33 @@
+{
+  "name": "worker",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "dev": "nest start --watch",
+    "start": "node dist/main",
+    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\""
+  },
+  "dependencies": {
+    "@autonomous-sales/database": "workspace:*",
+    "@autonomous-sales/shared": "workspace:*",
+    "@nestjs/bull": "^10.2.1",
+    "@nestjs/common": "^10.3.0",
+    "@nestjs/config": "^3.2.0",
+    "@nestjs/core": "^10.3.0",
+    "@nestjs/platform-express": "^10.3.0",
+    "@types/pg": "^8.20.0",
+    "bull": "^4.12.2",
+    "drizzle-orm": "^0.45.1",
+    "pg": "^8.20.0",
+    "postgres": "^3.4.4",
+    "reflect-metadata": "^0.2.0",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^10.3.0",
+    "@nestjs/schematics": "^10.1.0",
+    "@types/node": "^25.5.0",
+    "typescript": "^5.4.5"
+  }
+}

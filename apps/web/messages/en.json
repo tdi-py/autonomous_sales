@@ -1,0 +1,103 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "projects": "Projects",
+    "leads": "Leads",
+    "campaigns": "Campaigns",
+    "settings": "Settings"
+  },
+  "auth": {
+    "login": "Sign In",
+    "register": "Create Account",
+    "logout": "Sign Out",
+    "email": "Email",
+    "password": "Password",
+    "name": "Full Name",
+    "companyName": "Company Name",
+    "forgotPassword": "Forgot password?",
+    "noAccount": "Don't have an account?",
+    "hasAccount": "Already have an account?",
+    "orContinueWith": "Or continue with",
+    "google": "Google"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "totalLeads": "Total Leads",
+    "activeCampaigns": "Active Campaigns",
+    "sentThisWeek": "Sent This Week",
+    "replyRate": "Reply Rate",
+    "recentActivity": "Recent Activity",
+    "noActivity": "No activity yet. Create your first project to get started."
+  },
+  "projects": {
+    "title": "Projects",
+    "newProject": "New Project",
+    "noProjects": "No projects yet.",
+    "name": "Project Name",
+    "website": "Website URL",
+    "industry": "Industry",
+    "businessType": "Business Type",
+    "status": {
+      "onboarding": "Onboarding",
+      "active": "Active",
+      "paused": "Paused",
+      "archived": "Archived"
+    }
+  },
+  "campaigns": {
+    "title": "Campaigns",
+    "newCampaign": "New Campaign",
+    "status": {
+      "draft": "Draft",
+      "active": "Active",
+      "paused": "Paused",
+      "completed": "Completed"
+    },
+    "type": {
+      "cold_email": "Cold Email",
+      "cold_call": "Cold Call",
+      "linkedin": "LinkedIn",
+      "multi_channel": "Multi-Channel"
+    }
+  },
+  "leads": {
+    "title": "Leads",
+    "newLead": "Add Lead",
+    "import": "Import CSV",
+    "status": {
+      "new": "New",
+      "contacted": "Contacted",
+      "responded": "Responded",
+      "qualified": "Qualified",
+      "converted": "Converted",
+      "lost": "Lost"
+    },
+    "phoneClassification": {
+      "can_call_ai": "AI Call OK",
+      "can_call_manual": "Manual Only",
+      "cannot_call": "Do Not Call"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "profile": "Profile",
+    "workspace": "Workspace",
+    "emailAccounts": "Email Accounts",
+    "apiKeys": "API Keys",
+    "save": "Save Changes"
+  },
+  "common": {
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "back": "Back",
+    "next": "Next",
+    "search": "Search...",
+    "noData": "No data found.",
+    "error": "Something went wrong.",
+    "success": "Saved successfully."
+  }
+}

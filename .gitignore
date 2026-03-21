@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+.next/
+.turbo/
+build/
+
+# Environment variables
+*.env
+!.env.example
+.env.local
+.env.*.local
+
+# Database
+drizzle/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Test coverage
+coverage/
+
+# TypeScript
+*.tsbuildinfo
+
+# pnpm
+.pnpm-lock.yaml.bak

@@ -1,0 +1,103 @@
+{
+  "nav": {
+    "dashboard": "Panel",
+    "projects": "Projeler",
+    "leads": "Leadler",
+    "campaigns": "Kampanyalar",
+    "settings": "Ayarlar"
+  },
+  "auth": {
+    "login": "Giriş Yap",
+    "register": "Hesap Oluştur",
+    "logout": "Çıkış Yap",
+    "email": "E-posta",
+    "password": "Şifre",
+    "name": "Ad Soyad",
+    "companyName": "Şirket Adı",
+    "forgotPassword": "Şifremi unuttum?",
+    "noAccount": "Hesabınız yok mu?",
+    "hasAccount": "Zaten hesabınız var mı?",
+    "orContinueWith": "Veya şununla devam et",
+    "google": "Google"
+  },
+  "dashboard": {
+    "title": "Panel",
+    "totalLeads": "Toplam Lead",
+    "activeCampaigns": "Aktif Kampanya",
+    "sentThisWeek": "Bu Hafta Gönderilen",
+    "replyRate": "Yanıt Oranı",
+    "recentActivity": "Son Aktiviteler",
+    "noActivity": "Henüz aktivite yok. Başlamak için ilk projenizi oluşturun."
+  },
+  "projects": {
+    "title": "Projeler",
+    "newProject": "Yeni Proje",
+    "noProjects": "Henüz proje yok.",
+    "name": "Proje Adı",
+    "website": "Web Sitesi URL",
+    "industry": "Sektör",
+    "businessType": "İş Tipi",
+    "status": {
+      "onboarding": "Kurulum",
+      "active": "Aktif",
+      "paused": "Duraklatıldı",
+      "archived": "Arşivlendi"
+    }
+  },
+  "campaigns": {
+    "title": "Kampanyalar",
+    "newCampaign": "Yeni Kampanya",
+    "status": {
+      "draft": "Taslak",
+      "active": "Aktif",
+      "paused": "Duraklatıldı",
+      "completed": "Tamamlandı"
+    },
+    "type": {
+      "cold_email": "Soğuk E-posta",
+      "cold_call": "Soğuk Arama",
+      "linkedin": "LinkedIn",
+      "multi_channel": "Çok Kanallı"
+    }
+  },
+  "leads": {
+    "title": "Leadler",
+    "newLead": "Lead Ekle",
+    "import": "CSV İçe Aktar",
+    "status": {
+      "new": "Yeni",
+      "contacted": "İletişime Geçildi",
+      "responded": "Yanıt Verdi",
+      "qualified": "Nitelikli",
+      "converted": "Dönüştürüldü",
+      "lost": "Kaybedildi"
+    },
+    "phoneClassification": {
+      "can_call_ai": "AI Arama OK",
+      "can_call_manual": "Sadece Manuel",
+      "cannot_call": "Aranmaz"
+    }
+  },
+  "settings": {
+    "title": "Ayarlar",
+    "profile": "Profil",
+    "workspace": "Çalışma Alanı",
+    "emailAccounts": "E-posta Hesapları",
+    "apiKeys": "API Anahtarları",
+    "save": "Değişiklikleri Kaydet"
+  },
+  "common": {
+    "loading": "Yükleniyor...",
+    "save": "Kaydet",
+    "cancel": "İptal",
+    "delete": "Sil",
+    "edit": "Düzenle",
+    "create": "Oluştur",
+    "back": "Geri",
+    "next": "İleri",
+    "search": "Ara...",
+    "noData": "Veri bulunamadı.",
+    "error": "Bir şeyler ters gitti.",
+    "success": "Başarıyla kaydedildi."
+  }
+}
