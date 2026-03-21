@@ -4,6 +4,7 @@ import {
   IsUrl,
   IsArray,
   IsIn,
+  IsObject,
   MinLength,
   MaxLength,
 } from 'class-validator';
@@ -25,20 +26,17 @@ export class CreateProjectDto {
   @IsUrl()
   websiteUrl?: string;
 
-  @ApiPropertyOptional({ example: 'ecommerce' })
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   industry?: string;
 
-  @ApiPropertyOptional({
-    example: 'saas',
-    enum: ['saas', 'ecommerce', 'agency', 'service', 'marketplace', 'other'],
-  })
+  @ApiPropertyOptional({ enum: ['saas', 'ecommerce', 'agency', 'service', 'marketplace', 'other'] })
   @IsOptional()
   @IsIn(['saas', 'ecommerce', 'agency', 'service', 'marketplace', 'other'])
   businessType?: string;
 
-  @ApiPropertyOptional({ example: ['US', 'CA'], type: [String] })
+  @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @IsArray()
   targetGeography?: string[];
@@ -67,9 +65,7 @@ export class UpdateProjectDto {
   @IsString()
   industry?: string;
 
-  @ApiPropertyOptional({
-    enum: ['saas', 'ecommerce', 'agency', 'service', 'marketplace', 'other'],
-  })
+  @ApiPropertyOptional({ enum: ['saas', 'ecommerce', 'agency', 'service', 'marketplace', 'other'] })
   @IsOptional()
   @IsIn(['saas', 'ecommerce', 'agency', 'service', 'marketplace', 'other'])
   businessType?: string;
@@ -79,9 +75,7 @@ export class UpdateProjectDto {
   @IsArray()
   targetGeography?: string[];
 
-  @ApiPropertyOptional({
-    enum: ['onboarding', 'active', 'paused', 'archived'],
-  })
+  @ApiPropertyOptional({ enum: ['onboarding', 'active', 'paused', 'archived'] })
   @IsOptional()
   @IsIn(['onboarding', 'active', 'paused', 'archived'])
   status?: string;
@@ -110,7 +104,7 @@ export class CreateIcpProfileDto {
   @IsString()
   companySize?: string;
 
-  @ApiPropertyOptional({ example: ['CTO', 'VP Engineering'], type: [String] })
+  @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @IsArray()
   jobTitles?: string[];
@@ -124,4 +118,49 @@ export class CreateIcpProfileDto {
   @IsOptional()
   @IsString()
   geography?: string;
+}
+
+export class UpdateIcpProfileDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  label?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  industry?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  companySize?: string;
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  jobTitles?: string[];
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  painPoints?: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  geography?: string;
+}
+
+export class ConfirmAnalysisDto {
+  @ApiPropertyOptional({ description: 'User edits to analysis fields' })
+  @IsOptional()
+  @IsObject()
+  edits?: {
+    valueProposition?: string;
+    productDescription?: string;
+    targetMarket?: string;
+    keyFeatures?: string[];
+    toneOfVoice?: string;
+  };
 }

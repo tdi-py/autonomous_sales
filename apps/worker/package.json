@@ -6,6 +6,7 @@
     "build": "nest build",
     "dev": "nest start --watch --builder swc",
     "start": "node dist/main",
+    "postinstall": "npx playwright install chromium --with-deps",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\""
   },
   "dependencies": {
@@ -20,6 +21,7 @@
     "bull": "^4.12.2",
     "drizzle-orm": "^0.45.1",
     "pg": "^8.20.0",
+    "playwright": "^1.58.2",
     "postgres": "^3.4.4",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.1"

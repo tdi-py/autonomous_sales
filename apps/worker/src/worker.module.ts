@@ -11,8 +11,9 @@ import { PhoneVerifyProcessor } from './processors/phone-verify.processor';
 import { StrategyReviewProcessor } from './processors/strategy-review.processor';
 import { ComplianceCheckProcessor } from './processors/compliance-check.processor';
 import { DatabaseModule } from './database/database.module';
+import { ScraperService } from './services/scraper.service';
+import { AnalyzerService } from './services/analyzer.service';
 
-// Minimal health controller so Railway knows the process is alive
 @Controller('health')
 class HealthController {
   @Get()
@@ -24,17 +25,13 @@ class HealthController {
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: '../../.env' }),
-
-    // ─── Redis connection ───────────────────────────────────────────────────
     BullModule.forRoot({
       url: process.env.REDIS_URL ?? 'redis://localhost:6379',
       defaultJobOptions: {
-        removeOnComplete: 100,  // keep last 100 completed jobs
-        removeOnFail: 500,      // keep last 500 failed jobs for debugging
+        removeOnComplete: 100,
+        removeOnFail: 500,
       },
     }),
-
-    // ─── Register all queues ────────────────────────────────────────────────
     BullModule.registerQueue(
       { name: QUEUE_NAMES.ANALYZE_URL },
       { name: QUEUE_NAMES.GENERATE_CAMPAIGN_CONTENT },
@@ -44,11 +41,12 @@ class HealthController {
       { name: QUEUE_NAMES.STRATEGY_REVIEW },
       { name: QUEUE_NAMES.COMPLIANCE_CHECK },
     ),
-
     DatabaseModule,
   ],
   controllers: [HealthController],
   providers: [
+    ScraperService,
+    AnalyzerService,
     AnalyzeUrlProcessor,
     GenerateCampaignProcessor,
     SendOutreachProcessor,
