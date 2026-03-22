@@ -62,31 +62,30 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    const user = await this.db.query.users.findFirst({
-      where: eq(schema.users.email, dto.email.toLowerCase()),
-    });
+  const user = await this.db.query.users.findFirst({
+    where: eq(schema.users.email, dto.email.toLowerCase()),
+  });
 
-    if (!user || !user.passwordHash) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    const valid = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!valid) throw new UnauthorizedException('Invalid credentials');
-
-    // Get primary workspace
-    const membership = await this.db.query.workspaceMembers.findFirst({
-      where: eq(schema.workspaceMembers.userId, user.id),
-      with: { workspace: true },
-    });
-
-    const workspaceId = membership?.workspaceId ?? '';
-    const token = this.signToken(user.id, user.email, workspaceId, user.role);
-
-    return {
-      token,
-      user: this.sanitizeUser(user),
-    };
+  if (!user || !user.passwordHash) {
+    throw new UnauthorizedException('Invalid credentials');
   }
+
+  const valid = await bcrypt.compare(dto.password, user.passwordHash);
+  if (!valid) throw new UnauthorizedException('Invalid credentials');
+
+  // with: { workspace: true } kaldırıldı — relation tanımlı değil
+  const membership = await this.db.query.workspaceMembers.findFirst({
+    where: eq(schema.workspaceMembers.userId, user.id),
+  });
+
+  const workspaceId = membership?.workspaceId ?? '';
+  const token = this.signToken(user.id, user.email, workspaceId, user.role);
+
+  return {
+    token,
+    user: this.sanitizeUser(user),
+  };
+}
 
   async getMe(userId: string) {
     const user = await this.db.query.users.findFirst({

@@ -32,9 +32,20 @@ export class UsersService {
   }
 
   async getWorkspaces(userId: string) {
-    return this.db.query.workspaceMembers.findMany({
-      where: eq(schema.workspaceMembers.userId, userId),
-      with: { workspace: true },
-    });
+  // with: { workspace: true } kaldır, relation yok
+  const memberships = await this.db.query.workspaceMembers.findMany({
+    where: eq(schema.workspaceMembers.userId, userId),
+  });
+
+  // workspaceId'leri al, workspace'leri ayrı çek
+  const workspaces = await Promise.all(
+    memberships.map((m: any) =>
+      this.db.query.workspaces.findFirst({
+        where: eq(schema.workspaces.id, m.workspaceId),
+      })
+    )
+  );
+
+  return workspaces.filter(Boolean);
   }
 }

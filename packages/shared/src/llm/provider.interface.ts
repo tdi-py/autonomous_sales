@@ -42,8 +42,8 @@ export interface LLMProvider {
  */
 export const AGENT_MODELS = {
   groq: {
-    analyzer: 'qwen-qwq-32b',
-    strategist: 'qwen-qwq-32b',
+    analyzer: 'qwen/qwen3-32b',
+    strategist: 'qwen/qwen3-32b',
     communicator: 'meta-llama/llama-4-scout-17b-16e-instruct',
   },
   ollama: {

@@ -25,6 +25,18 @@ export interface AnalysisResult {
   }>;
 }
 
+const BUSINESS_TYPE_MAP: Record<string, schema.NewProject['businessType']> = {
+  b2b: 'saas',
+  b2c: 'ecommerce',
+  b2b2c: 'saas',
+  marketplace: 'marketplace',
+  saas: 'saas',
+  ecommerce: 'ecommerce',
+  agency: 'agency',
+  service: 'service',
+  other: 'other',
+};
+
 @Injectable()
 export class AnalyzerService {
   private readonly logger = new Logger(AnalyzerService.name);
@@ -73,6 +85,7 @@ export class AnalyzerService {
 
       try {
         const cleaned = llmResult.content
+          .replace(/<think>[\s\S]*?<\/think>/g, '')
           .replace(/```json\n?/g, '')
           .replace(/```\n?/g, '')
           .trim();
@@ -93,11 +106,9 @@ export class AnalyzerService {
     throw new Error(`Failed to parse LLM JSON after 3 attempts. Last error: ${lastError?.message}`);
   }
 
-  async saveToDatabase(
-    projectId: string,
-    result: AnalysisResult,
-    model: string,
-  ): Promise<void> {
+  async saveToDatabase(projectId: string, result: AnalysisResult, model: string): Promise<void> {
+    const mappedBusinessType = BUSINESS_TYPE_MAP[result.business_type] ?? 'other';
+
     // Update project_analysis
     await this.db
       .update(schema.projectAnalysis)
@@ -119,23 +130,21 @@ export class AnalyzerService {
       .update(schema.projects)
       .set({
         industry: result.industry,
-        businessType: result.business_type as schema.NewProject['businessType'],
+        businessType: mappedBusinessType,
         updatedAt: new Date(),
       })
       .where(eq(schema.projects.id, projectId));
 
-    // Delete old ICP profiles for this project, then insert fresh ones
+    // Soft-delete old ICP profiles, insert fresh ones
     const existingIcps = await this.db.query.icpProfiles.findMany({
       where: eq(schema.icpProfiles.projectId, projectId),
     });
 
-    if (existingIcps.length > 0) {
-      for (const icp of existingIcps) {
-        await this.db
-          .update(schema.icpProfiles)
-          .set({ isActive: false })
-          .where(eq(schema.icpProfiles.id, icp.id));
-      }
+    for (const icp of existingIcps) {
+      await this.db
+        .update(schema.icpProfiles)
+        .set({ isActive: false })
+        .where(eq(schema.icpProfiles.id, icp.id));
     }
 
     for (let i = 0; i < result.icp_suggestions.length; i++) {

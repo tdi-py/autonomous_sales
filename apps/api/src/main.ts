@@ -4,6 +4,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  console.log('NEXTAUTH_SECRET:', process.env.NEXTAUTH_SECRET);
   const app = await NestFactory.create(AppModule);
 
   // ─── Global Prefix ──────────────────────────────────────────────────────────

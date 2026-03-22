@@ -12,10 +12,10 @@ import { useAnalysisStatus } from '@/hooks/use-analysis-status';
 
 type Step = 'project-info' | 'analyzing' | 'review-analysis' | 'review-icp' | 'complete';
 
-function getToken(): string | undefined {
-  if (typeof document === 'undefined') return undefined;
+function getToken(): string {
+  if (typeof document === 'undefined') return '';
   const match = document.cookie.match(/auth-token=([^;]+)/);
-  return match?.[1];
+  return match?.[1] ?? '';
 }
 
 const STEP_LABELS = ['Project', 'Analyzing', 'Review', 'ICP', 'Done'];
@@ -41,6 +41,8 @@ export default function OnboardingPage() {
 
   // Step 1 → create project + start analysis
   async function handleProjectInfo(data: { name: string; websiteUrl?: string; businessType?: string }) {
+    const token = getToken();
+    console.log('TOKEN:', token);
     setIsSubmitting(true);
     setError(null);
     try {
