@@ -1,15 +1,15 @@
-import type { Config } from 'drizzle-kit';
-import * as dotenv from 'dotenv';
-import * as path from 'path';
+import { config } from 'dotenv';
+import { resolve } from 'path';
+import { defineConfig } from 'drizzle-kit';
 
-// Root .env dosyasını oku
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+config({ path: resolve(process.cwd(), '../../.env') });
 
-export default {
+
+export default defineConfig({
   schema: './src/schema/index.ts',
   out: './drizzle',
   dialect: 'postgresql',
   dbCredentials: {
     url: process.env.DATABASE_URL!,
   },
-} satisfies Config;
+});

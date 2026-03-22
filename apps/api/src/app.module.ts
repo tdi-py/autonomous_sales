@@ -11,6 +11,7 @@ import { LeadsModule } from './modules/leads/leads.module';
 import { AgentsModule } from './modules/agents/agents.module';
 import { ComplianceModule } from './modules/compliance/compliance.module';
 import { HealthModule } from './modules/health/health.module';
+import { EmailAccountsModule } from './modules/email-accounts/email-accounts.module';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
 import { DatabaseModule } from './database/database.module';
 
@@ -48,6 +49,8 @@ import { DatabaseModule } from './database/database.module';
     AgentsModule,
     ComplianceModule,
     HealthModule,
+    // ── Faz 2.5 ─────────────────────────────────────────────────────
+    EmailAccountsModule,
   ],
 })
 export class AppModule implements NestModule {

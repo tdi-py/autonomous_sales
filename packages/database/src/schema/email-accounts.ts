@@ -86,3 +86,7 @@ export const deliverabilityTests = pgTable('deliverability_tests', {
 
 export type EmailAccount = typeof emailAccounts.$inferSelect;
 export type WarmupSchedule = typeof warmupSchedule.$inferSelect;
+export type DeliverabilityTest = typeof deliverabilityTests.$inferSelect;
+export type NewEmailAccount = typeof emailAccounts.$inferInsert;
+export type NewWarmupSchedule = typeof warmupSchedule.$inferInsert;
+export type NewDeliverabilityTest = typeof deliverabilityTests.$inferInsert;

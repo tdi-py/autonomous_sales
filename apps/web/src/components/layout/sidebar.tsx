@@ -9,6 +9,7 @@ import {
   Megaphone,
   Settings,
   Zap,
+  Mail,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -61,7 +62,7 @@ export function Sidebar() {
       {/* Bottom hint */}
       <div className="px-5 py-4 border-t border-sidebar-border">
         <p className="text-xs text-sidebar-foreground/40">
-          Faz 0 — Altyapı
+          Faz 2.5 — Email Altyapısı
         </p>
       </div>
     </aside>

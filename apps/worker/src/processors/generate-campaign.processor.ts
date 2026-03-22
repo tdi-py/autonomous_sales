@@ -1,10 +1,13 @@
 import { Processor, Process } from '@nestjs/bull';
 import { Inject, Logger } from '@nestjs/common';
 import type { Job } from 'bull';
+import { eq, and } from 'drizzle-orm';
 
 import * as schema from '@autonomous-sales/database';
 import { QUEUE_NAMES, type GenerateCampaignContentJobPayload } from '@autonomous-sales/shared';
 import { DATABASE_TOKEN, logExecution } from '../database/database.module';
+import { CommunicatorService } from '../services/communicator.service';
+import { ContentCheckerService } from '../services/content-checker.service';
 
 @Processor(QUEUE_NAMES.GENERATE_CAMPAIGN_CONTENT)
 export class GenerateCampaignProcessor {
@@ -12,6 +15,8 @@ export class GenerateCampaignProcessor {
 
   constructor(
     @Inject(DATABASE_TOKEN) private readonly db: any,
+    private readonly communicatorService: CommunicatorService,
+    private readonly contentCheckerService: ContentCheckerService,
   ) {}
 
   @Process()
@@ -19,37 +24,219 @@ export class GenerateCampaignProcessor {
     const startTime = Date.now();
     const { projectId, campaignId } = job.data;
 
-    this.logger.log(`[generate-campaign] Starting job ${job.id} — campaign: ${campaignId}`);
+    this.logger.log(`[generate-campaign] Job ${job.id} — campaign: ${campaignId}`);
 
     try {
-      // ─────────────────────────────────────────────────────────────────────
-      // FAZ 2'DE BURAYA EKLENECEKLER:
-      //   1. project_analysis ve icp_profiles'dan context oku
-      //   2. GroqProvider ile Communicator Agent'ı çalıştır (Llama 4 Scout)
-      //   3. Çok adımlı email sequence üret (3-5 adım)
-      //   4. Call script ve objection handler'ları üret
-      //   5. email_sequences ve call_scripts tablolarına yaz
-      //   6. Platform learned rules'u prompt'a dahil et
-      // ─────────────────────────────────────────────────────────────────────
+      // ── 1. Kampanyayı kontrol et ──────────────────────────────────────
+      const campaign = await this.db.query.campaigns.findFirst({
+        where: eq(schema.campaigns.id, campaignId),
+      });
 
-      this.logger.log(`[generate-campaign] Job ${job.id} completed (placeholder)`);
+      if (!campaign) {
+        this.logger.warn(`[generate-campaign] Campaign ${campaignId} not found, skipping`);
+        return { skipped: true, reason: 'campaign_not_found' };
+      }
+
+      const settings = (campaign.settings ?? {}) as Record<string, unknown>;
+      const targetLanguage = (settings.targetLanguage as string) ?? 'en';
+      const icpProfileId = settings.icpProfileId as string | undefined;
+
+      // ── 2. Proje analizini oku ──────────────────────────────────────
+      const analysis = await this.db.query.projectAnalysis.findFirst({
+        where: eq(schema.projectAnalysis.projectId, projectId),
+      });
+
+      if (!analysis?.analyzedAt) {
+        throw new Error('Proje analizi henüz tamamlanmamış. Önce URL analizi yapın.');
+      }
+
+      // ── 3. ICP profilini oku ────────────────────────────────────────
+      let icp: schema.IcpProfile | null = null;
+
+      if (icpProfileId) {
+        icp = await this.db.query.icpProfiles.findFirst({
+          where: and(
+            eq(schema.icpProfiles.id, icpProfileId),
+            eq(schema.icpProfiles.isActive, true),
+          ),
+        });
+      }
+
+      if (!icp) {
+        icp = await this.db.query.icpProfiles.findFirst({
+          where: and(
+            eq(schema.icpProfiles.projectId, projectId),
+            eq(schema.icpProfiles.isActive, true),
+          ),
+        });
+      }
+
+      // ── 4. Proje + industry template ───────────────────────────────
+      const project = await this.db.query.projects.findFirst({
+        where: eq(schema.projects.id, projectId),
+      });
+
+      let industryTemplateHint: string | undefined;
+
+      if (project?.industry) {
+        const templateType =
+          campaign.type === 'cold_email' ? 'email_sequence' : 'call_script';
+
+        const template = await this.db.query.industryTemplates.findFirst({
+          where: and(
+            eq(schema.industryTemplates.industry, project.industry),
+            eq(schema.industryTemplates.templateType, templateType),
+            eq(schema.industryTemplates.isSystem, true),
+          ),
+        });
+
+        if (template) {
+          industryTemplateHint = JSON.stringify(template.content);
+          this.logger.log(`[generate-campaign] Using industry template: ${template.name}`);
+        }
+      }
+
+      // ── 5. Context oluştur ─────────────────────────────────────────
+      const ctx = {
+        productDescription: analysis.productDescription ?? '',
+        valueProposition: analysis.valueProposition ?? '',
+        targetMarket: analysis.targetMarket ?? '',
+        toneOfVoice: analysis.toneOfVoice ?? 'professional',
+        icpLabel: icp?.label ?? 'B2B decision makers',
+        jobTitles: (icp?.jobTitles as string[]) ?? [],
+        painPoints: (icp?.painPoints as string[]) ?? [],
+        industry: project?.industry ?? 'saas',
+        targetLanguage,
+        industryTemplateHint,
+      };
+
+      // ── 6. İçerik üret ─────────────────────────────────────────────
+      this.logger.log(`[generate-campaign] Calling CommunicatorService...`);
+      const result = await this.communicatorService.generateAll(ctx);
+
+      // ── 7. Email sequences kaydet ───────────────────────────────────
+      await this.db
+        .delete(schema.emailSequences)
+        .where(eq(schema.emailSequences.campaignId, campaignId));
+
+      for (const step of result.emailSteps) {
+        const reportA = this.contentCheckerService.checkEmail(
+          step.variantA.subject,
+          step.variantA.body,
+        );
+
+        if (reportA.overallWarnings.length > 0) {
+          this.logger.warn(
+            `[generate-campaign] Step ${step.stepOrder} warnings: ${reportA.overallWarnings.join(' | ')}`,
+          );
+        }
+
+        await this.db.insert(schema.emailSequences).values({
+          campaignId,
+          stepOrder: step.stepOrder,
+          subjectTemplate: step.variantA.subject,
+          bodyTemplate: step.variantA.body,
+          delayDays: step.delayDays,
+          variantLabel: 'A',
+          language: targetLanguage,
+          modelUsed: result.modelUsed,
+        });
+
+        await this.db.insert(schema.emailSequences).values({
+          campaignId,
+          stepOrder: step.stepOrder,
+          subjectTemplate: step.variantB.subject,
+          bodyTemplate: step.variantB.body,
+          delayDays: step.delayDays,
+          variantLabel: 'B',
+          language: targetLanguage,
+          modelUsed: result.modelUsed,
+        });
+      }
+
+      // ── 8. Call script kaydet ───────────────────────────────────────
+      if (campaign.type === 'cold_call' || campaign.type === 'multi_channel') {
+        const existingScripts = await this.db.query.callScripts.findMany({
+          where: eq(schema.callScripts.campaignId, campaignId),
+        });
+        const nextVersion = existingScripts.length + 1;
+
+        await this.db.insert(schema.callScripts).values({
+          campaignId,
+          version: nextVersion,
+          openingScript: result.callScript.opening_script,
+          dialogueTree: result.callScript.dialogue_tree,
+          objectionHandlers: result.callScript.objection_handlers,
+          closingScript: result.callScript.closing_script,
+          language: targetLanguage,
+          modelUsed: result.modelUsed,
+        });
+      }
+
+      // ── 9. Content status güncelle ─────────────────────────────────
+      await this.db
+        .update(schema.campaigns)
+        .set({
+          settings: {
+            ...settings,
+            contentStatus: 'ready',
+            generatedAt: new Date().toISOString(),
+          },
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.campaigns.id, campaignId));
+
+      const durationMs = Date.now() - startTime;
+      this.logger.log(
+        `[generate-campaign] Job ${job.id} done in ${durationMs}ms. Tokens: ${result.tokensUsed}`,
+      );
 
       await logExecution({
-        db: this.db as Parameters<typeof logExecution>[0]['db'],
+        db: this.db,
         projectId,
         agentType: 'communicator',
         trigger: QUEUE_NAMES.GENERATE_CAMPAIGN_CONTENT,
         inputPayload: job.data,
-        outputPayload: { status: 'placeholder', campaignId },
+        outputPayload: {
+          campaignId,
+          emailStepsGenerated: result.emailSteps.length,
+          tokensUsed: result.tokensUsed,
+          model: result.modelUsed,
+        },
         status: 'success',
-        durationMs: Date.now() - startTime,
+        tokensUsed: result.tokensUsed,
+        modelUsed: result.modelUsed,
+        durationMs,
       });
+
+      return { success: true, emailSteps: result.emailSteps.length };
     } catch (error) {
       const err = error as Error;
       this.logger.error(`[generate-campaign] Job ${job.id} failed: ${err.message}`);
 
+      try {
+        const campaign = await this.db.query.campaigns.findFirst({
+          where: eq(schema.campaigns.id, campaignId),
+        });
+        if (campaign) {
+          await this.db
+            .update(schema.campaigns)
+            .set({
+              settings: {
+                ...(campaign.settings ?? {}),
+                contentStatus: 'error',
+                contentError: err.message,
+              },
+              updatedAt: new Date(),
+            })
+            .where(eq(schema.campaigns.id, campaignId));
+        }
+      } catch {
+        // ignore secondary failure
+      }
+
       await logExecution({
-        db: this.db as Parameters<typeof logExecution>[0]['db'],
+        db: this.db,
         projectId,
         agentType: 'communicator',
         trigger: QUEUE_NAMES.GENERATE_CAMPAIGN_CONTENT,

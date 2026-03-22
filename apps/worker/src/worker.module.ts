@@ -13,6 +13,14 @@ import { ComplianceCheckProcessor } from './processors/compliance-check.processo
 import { DatabaseModule } from './database/database.module';
 import { ScraperService } from './services/scraper.service';
 import { AnalyzerService } from './services/analyzer.service';
+import { CommunicatorService } from './services/communicator.service';
+import { ContentCheckerService } from './services/content-checker.service';
+// ── Faz 2.5 ──────────────────────────────────────────────────────────────────
+import { SmtpService } from './services/smtp.service';
+import { ImapService } from './services/imap.service';
+import { DnsCheckerService } from './services/dns-checker.service';
+import { WarmupService } from './services/warmup.service';
+import { DeliverabilityTesterService } from './services/deliverability-tester.service';
 
 @Controller('health')
 class HealthController {
@@ -45,8 +53,19 @@ class HealthController {
   ],
   controllers: [HealthController],
   providers: [
+    // ── Faz 1 ──────────────────────────────────────────────────────────────
     ScraperService,
     AnalyzerService,
+    // ── Faz 2 ──────────────────────────────────────────────────────────────
+    CommunicatorService,
+    ContentCheckerService,
+    // ── Faz 2.5 ─────────────────────────────────────────────────────────────
+    SmtpService,
+    ImapService,
+    DnsCheckerService,
+    WarmupService,
+    DeliverabilityTesterService,
+    // ── Processors ─────────────────────────────────────────────────────────
     AnalyzeUrlProcessor,
     GenerateCampaignProcessor,
     SendOutreachProcessor,

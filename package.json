@@ -10,9 +10,9 @@
     "build:api": "turbo build --filter=api",
     "build:worker": "turbo build --filter=worker",
     "build:web": "turbo build --filter=web",
-    "db:generate": "turbo db:generate --filter=database",
-    "db:migrate": "turbo db:migrate --filter=database",
-    "db:studio": "turbo db:studio --filter=database",
+    "db:generate": "turbo db:generate --filter=@autonomous-sales/database",
+    "db:migrate": "turbo db:migrate --filter=@autonomous-sales/database",
+    "db:studio": "turbo db:studio --filter=@autonomous-sales/database",
     "lint": "turbo lint",
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\""
   },

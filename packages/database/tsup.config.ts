@@ -1,12 +1,12 @@
-﻿import { defineConfig } from 'tsup';
+import { defineConfig } from 'tsup';
 
-export default defineConfig({
+export default defineConfig((options) => ({
   entry: ['src/index.ts'],
   format: ['cjs', 'esm'],
   dts: true,
-  clean: true,
+  clean: !options.watch,
   sourcemap: true,
   splitting: false,
   outDir: 'dist',
   external: ['drizzle-orm', 'postgres', 'drizzle-orm/postgres-js', 'drizzle-orm/pg-core'],
-});
+}));

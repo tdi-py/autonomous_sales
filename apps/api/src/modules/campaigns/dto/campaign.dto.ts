@@ -1,4 +1,13 @@
-import { IsString, IsOptional, IsIn, IsInt, Min, MinLength, MaxLength } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsIn,
+  IsInt,
+  Min,
+  MinLength,
+  MaxLength,
+  IsBoolean,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateCampaignDto {
@@ -19,6 +28,27 @@ export class CreateCampaignDto {
   @IsOptional()
   @IsIn(['cold_email', 'cold_call', 'linkedin', 'multi_channel'])
   type?: string;
+
+  @ApiPropertyOptional({ example: 'icp-uuid-here' })
+  @IsOptional()
+  @IsString()
+  icpProfileId?: string;
+
+  @ApiPropertyOptional({ example: 'en', enum: ['en', 'tr', 'es', 'de', 'fr', 'pt'] })
+  @IsOptional()
+  @IsIn(['en', 'tr', 'es', 'de', 'fr', 'pt'])
+  targetLanguage?: string;
+
+  @ApiPropertyOptional({ example: 'Florist niche\'ine odaklan' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  additionalNotes?: string;
+
+  @ApiPropertyOptional({ example: false, description: 'Sadece senaryo üret, AI arama yapma' })
+  @IsOptional()
+  @IsBoolean()
+  scriptOnly?: boolean;
 }
 
 export class UpdateCampaignDto {
@@ -60,7 +90,7 @@ export class CreateEmailSequenceDto {
   @Min(0)
   delayDays?: number;
 
-  @ApiPropertyOptional({ example: 'variant_a' })
+  @ApiPropertyOptional({ example: 'A' })
   @IsOptional()
   @IsString()
   variantLabel?: string;
@@ -71,8 +101,22 @@ export class CreateEmailSequenceDto {
   language?: string;
 }
 
+export class UpdateEmailSequenceDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  subjectTemplate?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  bodyTemplate?: string;
+}
+
 export class CreateCallScriptDto {
-  @ApiPropertyOptional({ example: 'Hi, is this the owner of {{company_name}}?' })
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   openingScript?: string;
@@ -94,4 +138,24 @@ export class CreateCallScriptDto {
   @IsOptional()
   @IsString()
   language?: string;
+}
+
+export class UpdateCallScriptDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  openingScript?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  dialogueTree?: Record<string, unknown>;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  objectionHandlers?: unknown[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  closingScript?: string;
 }
