@@ -12,12 +12,14 @@ import {
   Phone,
   Users,
   TrendingUp,
+  Rocket,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { EmailSequenceEditor } from '@/components/campaigns/email-sequence-editor';
 import { CallScriptEditor } from '@/components/campaigns/call-script-editor';
 import { ContentGenerating } from '@/components/campaigns/content-generating';
+import { PreflightCheckModal } from '@/components/campaigns/preflight-check-modal';
 import { useCampaignContentStatus } from '@/hooks/use-campaign-content-status';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -80,8 +82,6 @@ const STATUS_STYLE: Record<Campaign['status'], string> = {
   completed: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
 };
 
-// ─── Helper ───────────────────────────────────────────────────────────────────
-
 function getToken(): string {
   if (typeof document === 'undefined') return '';
   const match = document.cookie.match(/auth-token=([^;]+)/);
@@ -99,6 +99,8 @@ export default function CampaignDetailPage() {
   const [activeTab, setActiveTab] = useState('overview');
   const [regeneratingStep, setRegeneratingStep] = useState<number | null>(null);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  // ✅ Preflight modal state
+  const [showPreflight, setShowPreflight] = useState(false);
 
   const contentStatus = (campaign?.settings?.contentStatus as string) ?? 'pending';
   const isGenerating = contentStatus === 'generating';
@@ -159,6 +161,12 @@ export default function CampaignDetailPage() {
     }
   }
 
+  function handleLaunchConfirmed() {
+    setShowPreflight(false);
+    // Faz 3'te gerçek başlatma mantığı eklenecek
+    alert('Kampanya başlatma Faz 3\'te devreye girecek.');
+  }
+
   // ── Loading / Error ────────────────────────────────────────────────────────
 
   if (loading) {
@@ -205,6 +213,17 @@ export default function CampaignDetailPage() {
   return (
     <div className="space-y-6 max-w-5xl">
 
+      {/* Preflight Modal */}
+      {showPreflight && (
+        <PreflightCheckModal
+          campaignId={campaignId}
+          campaignName={campaign.name}
+          token={getToken()}
+          onClose={() => setShowPreflight(false)}
+          onConfirmLaunch={handleLaunchConfirmed}
+        />
+      )}
+
       {/* Back */}
       <Link
         href={`/projects/${projectId}/campaigns`}
@@ -244,14 +263,13 @@ export default function CampaignDetailPage() {
             <RefreshCw className={cn('w-4 h-4', (isRegenerating || isGenerating) && 'animate-spin')} />
             Yeniden Üret
           </button>
+          {/* ✅ Fixed: now opens preflight check modal instead of disabled button */}
           <button
-            disabled
-            className="relative inline-flex items-center gap-2 h-9 px-4 rounded-md bg-primary/50 text-primary-foreground text-sm cursor-not-allowed"
+            onClick={() => setShowPreflight(true)}
+            className="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
           >
+            <Rocket className="w-4 h-4" />
             Kampanyayı Başlat
-            <span className="absolute -top-2 -right-2 text-xs bg-yellow-500 text-white px-1.5 py-0.5 rounded-full">
-              Faz 3
-            </span>
           </button>
         </div>
       </div>
@@ -286,8 +304,6 @@ export default function CampaignDetailPage() {
 
       {/* Tab content */}
       <div>
-
-        {/* Overview */}
         {activeTab === 'overview' && (
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -338,7 +354,6 @@ export default function CampaignDetailPage() {
           </div>
         )}
 
-        {/* Email Dizisi */}
         {activeTab === 'email' && showEmail && (
           isGenerating ? (
             <div className="rounded-2xl border border-border bg-card p-8 max-w-lg">
@@ -355,7 +370,6 @@ export default function CampaignDetailPage() {
           )
         )}
 
-        {/* Call Senaryosu */}
         {activeTab === 'call' && showCall && (
           isGenerating ? (
             <div className="rounded-2xl border border-border bg-card p-8 max-w-lg">
@@ -371,7 +385,6 @@ export default function CampaignDetailPage() {
           )
         )}
 
-        {/* Leads */}
         {activeTab === 'leads' && (
           <div className="flex flex-col items-center justify-center py-16 gap-3 rounded-xl border border-dashed border-border">
             <Users className="w-8 h-8 text-muted-foreground" />
@@ -387,7 +400,6 @@ export default function CampaignDetailPage() {
           </div>
         )}
 
-        {/* Performance */}
         {activeTab === 'performance' && (
           <div className="flex flex-col items-center justify-center py-16 gap-3 rounded-xl border border-dashed border-border">
             <TrendingUp className="w-8 h-8 text-muted-foreground" />
@@ -399,7 +411,6 @@ export default function CampaignDetailPage() {
             </div>
           </div>
         )}
-
       </div>
     </div>
   );

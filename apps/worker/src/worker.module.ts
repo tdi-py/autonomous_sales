@@ -1,6 +1,7 @@
 import { Module, Controller, Get } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
+import { ScheduleModule } from '@nestjs/schedule'; // ✅ Import
 import { QUEUE_NAMES } from '@autonomous-sales/shared';
 
 import { AnalyzeUrlProcessor } from './processors/analyze-url.processor';
@@ -21,6 +22,7 @@ import { ImapService } from './services/imap.service';
 import { DnsCheckerService } from './services/dns-checker.service';
 import { WarmupService } from './services/warmup.service';
 import { DeliverabilityTesterService } from './services/deliverability-tester.service';
+import { WarmupCronService } from './services/warmup-cron.service';
 
 @Controller('health')
 class HealthController {
@@ -33,6 +35,10 @@ class HealthController {
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: '../../.env' }),
+
+    // ✅ Fixed: ScheduleModule.forRoot() must be inside imports array, not called standalone
+    ScheduleModule.forRoot(),
+
     BullModule.forRoot({
       url: process.env.REDIS_URL ?? 'redis://localhost:6379',
       defaultJobOptions: {
@@ -65,6 +71,7 @@ class HealthController {
     DnsCheckerService,
     WarmupService,
     DeliverabilityTesterService,
+    WarmupCronService, // ✅ Daily cron job scheduler
     // ── Processors ─────────────────────────────────────────────────────────
     AnalyzeUrlProcessor,
     GenerateCampaignProcessor,

@@ -22,10 +22,6 @@
     "forceConsistentCasingInFileNames": true,
     "noFallthroughCasesInSwitch": true,
     "strictPropertyInitialization": false,
-    "paths": {
-      "@autonomous-sales/database": ["../../packages/database/dist/index.d.ts"],
-      "@autonomous-sales/shared": ["../../packages/shared/dist/index.d.ts"]
-    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "../../node_modules"]

@@ -7,7 +7,6 @@ import Link from 'next/link';
 
 import { ConnectAccountForm } from '@/components/email-accounts/connect-account-form';
 import { EmailAccountsList } from '@/components/email-accounts/account-card';
-import { cn } from '@/lib/utils';
 
 interface EmailAccount {
   id: string;
@@ -23,31 +22,37 @@ interface EmailAccount {
   createdAt: string;
 }
 
+// ✅ Fixed: use cookie, not localStorage — consistent with the rest of the app
+function getAuthToken(): string {
+  if (typeof document === 'undefined') return '';
+  const match = document.cookie.match(/auth-token=([^;]+)/);
+  return match?.[1] ?? '';
+}
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
+
 export default function EmailAccountsPage() {
   const { id: projectId } = useParams<{ id: string }>();
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') ?? '' : '';
-
   const fetchAccounts = useCallback(async () => {
     try {
-      const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
-      const res = await fetch(`${API}/email-accounts?projectId=${projectId}`, {
+      const token = getAuthToken(); // ✅ Cookie-based token
+      const res = await fetch(`${API_URL}/email-accounts?projectId=${projectId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
-        const data = await res.json();
+        const data = await res.json() as EmailAccount[];
         setAccounts(data);
       }
     } catch {
-      // API not connected yet — mock data for UI preview
       setAccounts([]);
     } finally {
       setLoading(false);
     }
-  }, [projectId, token]);
+  }, [projectId]);
 
   useEffect(() => {
     fetchAccounts();
@@ -113,7 +118,7 @@ export default function EmailAccountsPage() {
         ))}
       </div>
 
-      {/* Connect form modal/inline */}
+      {/* Connect form */}
       {showForm && (
         <div className="rounded-xl border border-primary/30 bg-card shadow-lg overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-muted/30">
@@ -165,8 +170,8 @@ export default function EmailAccountsPage() {
         <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-2">
           <h3 className="text-sm font-semibold">📋 Gönderim Kalitesini Artırmak İçin</h3>
           <ul className="text-xs text-muted-foreground space-y-1.5 list-none">
-            <li>✅ SPF, DKIM ve DMARC'ın tümünün geçerli olduğundan emin olun</li>
-            <li>🔥 28 günlük ısındırma sürecini tamamlayın (günlük limit 200'e çıkar)</li>
+            <li>✅ SPF, DKIM ve DMARC&apos;ın tümünün geçerli olduğundan emin olun</li>
+            <li>🔥 28 günlük ısındırma sürecini tamamlayın (günlük limit 200&apos;e çıkar)</li>
             <li>📬 Kampanya başlatmadan önce spam testi çalıştırın</li>
             <li>🎯 Kişiselleştirilmiş içerik spam filtrelerinden daha iyi geçer</li>
           </ul>

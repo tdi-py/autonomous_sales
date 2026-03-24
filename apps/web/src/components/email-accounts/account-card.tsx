@@ -8,14 +8,23 @@ import {
   ChevronDown,
   ChevronUp,
   Loader2,
-  Plus,
-  AlertCircle,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { DnsStatus } from './dns-status';
 import { WarmupProgress } from './warmup-progress';
 import { DeliverabilityResults } from './deliverability-results';
+
+// ─── Auth Token Helper ────────────────────────────────────────────────────────
+// ✅ Fixed: consistent with the rest of the app — use cookie, not localStorage
+
+function getAuthToken(): string {
+  if (typeof document === 'undefined') return '';
+  const match = document.cookie.match(/auth-token=([^;]+)/);
+  return match?.[1] ?? '';
+}
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -33,7 +42,7 @@ interface EmailAccount {
   createdAt: string;
 }
 
-interface WarmupProgress {
+interface WarmupProgressData {
   completedDays: number;
   totalDays: number;
   percentComplete: number;
@@ -66,21 +75,20 @@ const PROVIDER_COLORS = {
 
 interface AccountCardProps {
   account: EmailAccount;
-  token: string;
   onDeleted: (id: string) => void;
 }
 
-function AccountCard({ account, token, onDeleted }: AccountCardProps) {
+function AccountCard({ account, onDeleted }: AccountCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const [warmupProgress, setWarmupProgress] = useState<WarmupProgress | null>(null);
+  const [warmupProgress, setWarmupProgress] = useState<WarmupProgressData | null>(null);
   const [deliverabilityTests, setDeliverabilityTests] = useState<DeliverabilityTest[]>([]);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [testLoading, setTestLoading] = useState(false);
   const [localAccount, setLocalAccount] = useState(account);
 
   const apiFetch = useCallback(async (path: string, options?: RequestInit) => {
-    const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
-    const res = await fetch(`${API}${path}`, {
+    const token = getAuthToken(); // ✅ Cookie-based token
+    const res = await fetch(`${API_URL}${path}`, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
@@ -90,10 +98,10 @@ function AccountCard({ account, token, onDeleted }: AccountCardProps) {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error((err as any).message ?? `HTTP ${res.status}`);
+      throw new Error((err as { message?: string }).message ?? `HTTP ${res.status}`);
     }
     return res.json();
-  }, [token]);
+  }, []);
 
   const loadDetails = useCallback(async () => {
     try {
@@ -101,8 +109,8 @@ function AccountCard({ account, token, onDeleted }: AccountCardProps) {
         apiFetch(`/email-accounts/${account.id}/warmup-progress`),
         apiFetch(`/email-accounts/${account.id}/deliverability-history`),
       ]);
-      setWarmupProgress(progress);
-      setDeliverabilityTests(tests);
+      setWarmupProgress(progress as WarmupProgressData);
+      setDeliverabilityTests(tests as DeliverabilityTest[]);
     } catch {
       // Silently fail — not critical
     }
@@ -118,17 +126,17 @@ function AccountCard({ account, token, onDeleted }: AccountCardProps) {
       switch (action) {
         case 'test-connection': {
           const result = await apiFetch(`/email-accounts/${account.id}/test-connection`, { method: 'POST' });
-          alert(`SMTP: ${result.smtp}, IMAP: ${result.imap}${result.error ? `\n${result.error}` : ''}`);
+          alert(`SMTP: ${(result as { smtp: string }).smtp}, IMAP: ${(result as { imap: string }).imap}${(result as { error?: string }).error ? `\n${(result as { error: string }).error}` : ''}`);
           break;
         }
         case 'check-dns': {
           const result = await apiFetch(`/email-accounts/${account.id}/check-dns`, { method: 'POST' });
           setLocalAccount((prev) => ({
             ...prev,
-            spfValid: result.spfValid,
-            dkimValid: result.dkimValid,
-            dmarcValid: result.dmarcValid,
-            healthScore: result.healthScore,
+            spfValid: (result as { spfValid: boolean }).spfValid,
+            dkimValid: (result as { dkimValid: boolean }).dkimValid,
+            dmarcValid: (result as { dmarcValid: boolean }).dmarcValid,
+            healthScore: (result as { healthScore: number }).healthScore,
           }));
           break;
         }
@@ -183,7 +191,7 @@ function AccountCard({ account, token, onDeleted }: AccountCardProps) {
             'flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-white text-sm font-bold',
             `bg-gradient-to-br ${PROVIDER_COLORS[localAccount.provider]}`,
           )}>
-            {localAccount.provider === 'gmail' ? 'G' : localAccount.provider === 'outlook' ? '0' : 'S'}
+            {localAccount.provider === 'gmail' ? 'G' : localAccount.provider === 'outlook' ? 'O' : 'S'}
           </div>
 
           <div className="flex-1 min-w-0">
@@ -233,7 +241,7 @@ function AccountCard({ account, token, onDeleted }: AccountCardProps) {
           {/* DNS mini status */}
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground">DNS:</span>
-            {['spf', 'dkim', 'dmarc'].map((key) => {
+            {(['spf', 'dkim', 'dmarc'] as const).map((key) => {
               const val = localAccount[`${key}Valid` as keyof EmailAccount] as boolean | null | undefined;
               return (
                 <span
@@ -313,8 +321,8 @@ function AccountCard({ account, token, onDeleted }: AccountCardProps) {
           {/* Deliverability */}
           <div className="space-y-2">
             <DeliverabilityResults
-              tests={deliverabilityTests as any}
-              seedTestAvailable={!!(process.env.NEXT_PUBLIC_SEED_TEST_AVAILABLE)}
+              tests={deliverabilityTests as Parameters<typeof DeliverabilityResults>[0]['tests']}
+              seedTestAvailable={false}
               onRunTest={handleRunTest}
               runningTest={testLoading}
             />
@@ -333,9 +341,7 @@ interface EmailAccountsListProps {
   onDeleted: (id: string) => void;
 }
 
-export function EmailAccountsList({ projectId, accounts, onDeleted }: EmailAccountsListProps) {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') ?? '' : '';
-
+export function EmailAccountsList({ projectId: _projectId, accounts, onDeleted }: EmailAccountsListProps) {
   if (accounts.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 gap-3 rounded-xl border border-dashed border-border">
@@ -358,7 +364,6 @@ export function EmailAccountsList({ projectId, accounts, onDeleted }: EmailAccou
         <AccountCard
           key={account.id}
           account={account}
-          token={token}
           onDeleted={onDeleted}
         />
       ))}

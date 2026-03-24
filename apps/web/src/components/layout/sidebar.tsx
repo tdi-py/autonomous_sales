@@ -5,20 +5,15 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
   FolderKanban,
-  Users,
-  Megaphone,
   Settings,
   Zap,
-  Mail,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/projects', label: 'Projects', icon: FolderKanban },
-  { href: '/campaigns', label: 'Campaigns', icon: Megaphone },
-  { href: '/leads', label: 'Leads', icon: Users },
-  { href: '/settings', label: 'Settings', icon: Settings },
+  { href: '/projects',  label: 'Projects',  icon: FolderKanban },
+  { href: '/settings',  label: 'Settings',  icon: Settings },
 ];
 
 export function Sidebar() {
@@ -40,6 +35,7 @@ export function Sidebar() {
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5">
         {navItems.map(({ href, label, icon: Icon }) => {
+          // /projects/[id]/campaigns gibi nested route'larda da "Projects" aktif görünsün
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
             <Link

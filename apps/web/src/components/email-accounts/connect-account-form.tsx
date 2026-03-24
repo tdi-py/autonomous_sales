@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Mail, Settings, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
+import { Mail, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type Provider = 'gmail' | 'outlook' | 'custom_smtp';
@@ -18,7 +18,6 @@ const PROVIDERS = [
     description: 'Google Workspace dahil',
     icon: '📧',
     color: 'from-red-500 to-orange-400',
-    fields: ['emailAddress', 'password'],
     note: 'Gmail için Google hesabınızda 2FA aktifse "App Password" oluşturmanız gerekir.',
   },
   {
@@ -27,7 +26,6 @@ const PROVIDERS = [
     description: 'Microsoft 365 dahil',
     icon: '📨',
     color: 'from-blue-600 to-blue-400',
-    fields: ['emailAddress', 'password'],
     note: 'Microsoft 365 hesabınızın şifresini kullanın.',
   },
   {
@@ -36,19 +34,22 @@ const PROVIDERS = [
     description: 'Kendi SMTP sunucunuz',
     icon: '⚙️',
     color: 'from-slate-600 to-slate-400',
-    fields: ['emailAddress', 'smtpHost', 'smtpPort', 'imapHost', 'imapPort', 'username', 'password'],
     note: 'SMTP ve IMAP bilgilerinizi girin.',
   },
 ];
 
+// ── Cookie reader helper (consistent with rest of the app) ──────────────────
+function getAuthToken(): string {
+  if (typeof document === 'undefined') return '';
+  const match = document.cookie.match(/auth-token=([^;]+)/);
+  return match?.[1] ?? '';
+}
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
+
 export function ConnectAccountForm({ projectId, onSuccess }: ConnectAccountFormProps) {
   const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null);
   const [loading, setLoading] = useState(false);
-  const [testResult, setTestResult] = useState<{
-    smtp: 'ok' | 'failed' | null;
-    imap: 'ok' | 'failed' | null;
-    error?: string;
-  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
@@ -72,7 +73,7 @@ export function ConnectAccountForm({ projectId, onSuccess }: ConnectAccountFormP
     setSuccess(false);
 
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = getAuthToken();
       const body: Record<string, unknown> = {
         projectId,
         emailAddress: form.emailAddress,
@@ -89,7 +90,8 @@ export function ConnectAccountForm({ projectId, onSuccess }: ConnectAccountFormP
         body.username = form.username || form.emailAddress;
       }
 
-      const res = await fetch('/api/email-accounts', {
+      // ✅ Fixed: use correct NestJS API URL, not Next.js /api route
+      const res = await fetch(`${API_URL}/email-accounts`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -100,7 +102,7 @@ export function ConnectAccountForm({ projectId, onSuccess }: ConnectAccountFormP
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message ?? 'Hesap bağlanamadı');
+        throw new Error((data as { message?: string }).message ?? 'Hesap bağlanamadı');
       }
 
       setSuccess(true);
@@ -131,7 +133,6 @@ export function ConnectAccountForm({ projectId, onSuccess }: ConnectAccountFormP
               id={`provider-${provider.id}`}
               onClick={() => {
                 setSelectedProvider(provider.id);
-                setTestResult(null);
                 setError(null);
               }}
               className={cn(
@@ -258,30 +259,6 @@ export function ConnectAccountForm({ projectId, onSuccess }: ConnectAccountFormP
               </>
             )}
           </div>
-
-          {/* Test result */}
-          {testResult && (
-            <div className="rounded-lg border border-border bg-card p-3 space-y-1.5">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Bağlantı Test Sonucu</p>
-              <div className="flex items-center gap-4">
-                <span className="flex items-center gap-1.5 text-sm">
-                  {testResult.smtp === 'ok'
-                    ? <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                    : <XCircle className="w-4 h-4 text-destructive" />}
-                  SMTP {testResult.smtp === 'ok' ? '✓' : '✗'}
-                </span>
-                <span className="flex items-center gap-1.5 text-sm">
-                  {testResult.imap === 'ok'
-                    ? <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                    : <XCircle className="w-4 h-4 text-destructive" />}
-                  IMAP {testResult.imap === 'ok' ? '✓' : '✗'}
-                </span>
-              </div>
-              {testResult.error && (
-                <p className="text-xs text-destructive">{testResult.error}</p>
-              )}
-            </div>
-          )}
 
           {/* Error */}
           {error && (

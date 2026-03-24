@@ -1,11 +1,14 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { eq, and } from 'drizzle-orm';
+import { InjectQueue } from '@nestjs/bull';
+import type { Queue } from 'bull';
 import * as schema from '@autonomous-sales/database';
 import { DATABASE_TOKEN } from '../database/database.module';
+import { QUEUE_NAMES } from '@autonomous-sales/shared';
 import { SmtpService } from './smtp.service';
 
 // ─── Warmup Schedule ─────────────────────────────────────────────────────────
-// Day ranges → target emails per day
 
 const WARMUP_SCHEDULE: Array<{ fromDay: number; toDay: number; targetSends: number }> = [
   { fromDay: 1,  toDay: 3,  targetSends: 5  },
@@ -13,7 +16,7 @@ const WARMUP_SCHEDULE: Array<{ fromDay: number; toDay: number; targetSends: numb
   { fromDay: 8,  toDay: 14, targetSends: 20 },
   { fromDay: 15, toDay: 21, targetSends: 35 },
   { fromDay: 22, toDay: 28, targetSends: 50 },
-  { fromDay: 29, toDay: 999, targetSends: 0 }, // 0 = use account's plan limit (ready state)
+  { fromDay: 29, toDay: 999, targetSends: 0 },
 ];
 
 const WARMUP_TOTAL_DAYS = 28;
@@ -57,12 +60,45 @@ export class WarmupService {
   constructor(
     @Inject(DATABASE_TOKEN) private readonly db: any,
     private readonly smtpService: SmtpService,
+    @InjectQueue(QUEUE_NAMES.WARMUP_EXECUTE) private readonly warmupQueue: Queue,
   ) {}
 
-  /**
-   * Create warmup schedule entries for a newly connected email account.
-   * Generates one row per day (28 days total).
-   */
+  // ─── Cron: Her gün 09:00 UTC tüm "warming" hesapları kuyruğa ekle ─────────
+
+  @Cron('0 9 * * *')
+  async scheduleDailyWarmups(): Promise<void> {
+    this.logger.log('[warmup-cron] Running daily warmup scheduler...');
+
+    const warmingAccounts = await this.db.query.emailAccounts.findMany({
+      where: eq(schema.emailAccounts.warmupStatus, 'warming'),
+    }) as schema.EmailAccount[];
+
+    if (warmingAccounts.length === 0) {
+      this.logger.log('[warmup-cron] No accounts in warming state.');
+      return;
+    }
+
+    for (const account of warmingAccounts) {
+      await this.warmupQueue.add(
+        {
+          emailAccountId: account.id,
+          projectId: account.projectId,
+          workspaceId: '',
+          agentType: 'communicator',
+        },
+        {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 60_000 },
+        },
+      );
+      this.logger.log(`[warmup-cron] Queued warmup job for account: ${account.id}`);
+    }
+
+    this.logger.log(`[warmup-cron] Queued ${warmingAccounts.length} warmup jobs.`);
+  }
+
+  // ─── Mevcut metodlar (değiştirilmedi) ────────────────────────────────────────
+
   async createSchedule(emailAccountId: string): Promise<void> {
     this.logger.log(`[warmup] Creating 28-day schedule for account: ${emailAccountId}`);
 
@@ -83,16 +119,13 @@ export class WarmupService {
     this.logger.log(`[warmup] Created ${scheduleEntries.length} schedule entries`);
   }
 
-  /**
-   * Start warmup for an account (set status to 'warming').
-   */
   async startWarmup(emailAccountId: string): Promise<void> {
     await this.db
       .update(schema.emailAccounts)
       .set({
         warmupStatus: 'warming',
         warmupDay: 1,
-        dailySendLimit: 5, // Day 1 limit
+        dailySendLimit: 5,
         updatedAt: new Date(),
       })
       .where(eq(schema.emailAccounts.id, emailAccountId));
@@ -100,16 +133,11 @@ export class WarmupService {
     this.logger.log(`[warmup] Warmup started for account: ${emailAccountId}`);
   }
 
-  /**
-   * Execute today's warmup sends for a specific account.
-   * Called by warmup-execute processor.
-   */
   async executeDailyWarmup(emailAccountId: string): Promise<{
     sent: number;
     errors: number;
     completed: boolean;
   }> {
-    // Load account
     const account = await this.db.query.emailAccounts.findFirst({
       where: eq(schema.emailAccounts.id, emailAccountId),
     }) as schema.EmailAccount | null;
@@ -125,7 +153,6 @@ export class WarmupService {
 
     const currentDay = account.warmupDay ?? 1;
 
-    // Load today's schedule
     const scheduleEntry = await this.db.query.warmupSchedule.findFirst({
       where: and(
         eq(schema.warmupSchedule.emailAccountId, emailAccountId),
@@ -148,9 +175,7 @@ export class WarmupService {
       password: credentials?.password as string ?? '',
     };
 
-    // Seed recipient: platform's own warmup address or self-send
     const seedRecipient = this.getSeedRecipient();
-
     let sent = 0;
     let errors = 0;
 
@@ -179,55 +204,34 @@ export class WarmupService {
         this.logger.error(`[warmup] Error sending warmup email: ${err.message}`);
       }
 
-      // Random delay between emails: 30-120 seconds
       if (i < targetSends - 1) {
         const delayMs = (30 + Math.random() * 90) * 1000;
         await this.sleep(delayMs);
       }
     }
 
-    // Update schedule entry
     await this.db
       .update(schema.warmupSchedule)
-      .set({
-        actualSends: sent,
-        executedAt: new Date(),
-      })
+      .set({ actualSends: sent, executedAt: new Date() })
       .where(eq(schema.warmupSchedule.id, scheduleEntry.id));
 
-    // Advance to next day or mark as ready
     const isLastDay = currentDay >= WARMUP_TOTAL_DAYS;
     const nextDay = currentDay + 1;
-    const nextRule = WARMUP_SCHEDULE.find(
-      (r) => nextDay >= r.fromDay && nextDay <= r.toDay,
-    );
-    const nextDailyLimit = nextRule && nextRule.targetSends > 0
-      ? nextRule.targetSends
-      : 200; // Ready state: use plan limit
+    const nextRule = WARMUP_SCHEDULE.find((r) => nextDay >= r.fromDay && nextDay <= r.toDay);
+    const nextDailyLimit = nextRule && nextRule.targetSends > 0 ? nextRule.targetSends : 200;
 
     if (isLastDay) {
-      // Warmup complete!
       await this.db
         .update(schema.emailAccounts)
-        .set({
-          warmupStatus: 'ready',
-          warmupDay: currentDay,
-          dailySendLimit: 200,
-          updatedAt: new Date(),
-        })
+        .set({ warmupStatus: 'ready', warmupDay: currentDay, dailySendLimit: 200, updatedAt: new Date() })
         .where(eq(schema.emailAccounts.id, emailAccountId));
 
       this.logger.log(`[warmup] ✅ Warmup COMPLETE for account: ${emailAccountId}`);
       return { sent, errors, completed: true };
     } else {
-      // Advance day
       await this.db
         .update(schema.emailAccounts)
-        .set({
-          warmupDay: nextDay,
-          dailySendLimit: nextDailyLimit,
-          updatedAt: new Date(),
-        })
+        .set({ warmupDay: nextDay, dailySendLimit: nextDailyLimit, updatedAt: new Date() })
         .where(eq(schema.emailAccounts.id, emailAccountId));
 
       this.logger.log(`[warmup] Day ${currentDay} complete — advancing to day ${nextDay} (${nextDailyLimit} emails/day)`);
@@ -235,9 +239,6 @@ export class WarmupService {
     }
   }
 
-  /**
-   * Pause warmup.
-   */
   async pauseWarmup(emailAccountId: string): Promise<void> {
     await this.db
       .update(schema.emailAccounts)
@@ -245,9 +246,6 @@ export class WarmupService {
       .where(eq(schema.emailAccounts.id, emailAccountId));
   }
 
-  /**
-   * Resume warmup from paused state.
-   */
   async resumeWarmup(emailAccountId: string): Promise<void> {
     await this.db
       .update(schema.emailAccounts)
@@ -255,9 +253,6 @@ export class WarmupService {
       .where(eq(schema.emailAccounts.id, emailAccountId));
   }
 
-  /**
-   * Get warmup progress for an account.
-   */
   async getProgress(emailAccountId: string): Promise<{
     account: schema.EmailAccount | null;
     schedule: schema.WarmupSchedule[];
@@ -294,7 +289,6 @@ export class WarmupService {
   // ─── Private helpers ─────────────────────────────────────────────────────
 
   private getSeedRecipient(): string {
-    // Use platform seed address from env, fallback to self-send scenario
     return process.env.SEED_TEST_GMAIL ?? 'warmup-seed@autonomous-sales.internal';
   }
 
