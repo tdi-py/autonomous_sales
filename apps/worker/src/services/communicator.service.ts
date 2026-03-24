@@ -14,6 +14,9 @@ export interface CommunicatorContext {
   industry: string;
   targetLanguage: string;
   industryTemplateHint?: string;
+  // Faz 5: Platform kuralları ve özel prompt
+  platformRulesContext?: string;
+  customPromptText?: string;
 }
 
 export interface EmailVariant {
@@ -164,6 +167,16 @@ export class CommunicatorService {
       ? `\n\n## SEKTÖR ŞABLONU (referans al, birebir kopyalama):\n${ctx.industryTemplateHint}`
       : '';
 
+    // Faz 5: Platform kuralları context
+    const platformNote = ctx.platformRulesContext
+      ? `\n\n## PLATFORM KURALLARI (bu sektörde kanıtlanmış — mutlaka uygula):\n${ctx.platformRulesContext}`
+      : '';
+
+    // Faz 5: Özel prompt (Strategist Agent tarafından güncellendi)
+    const customNote = ctx.customPromptText
+      ? `\n\n## STRATEJİST'TEN ÖZEL TALİMAT:\n${ctx.customPromptText}`
+      : '';
+
     const prompt = `Sen dünya çapında bir B2B cold email uzmanısın. Aşağıdaki bilgileri kullanarak bir cold email yaz.
 
 ## KURALLAR:
@@ -185,7 +198,7 @@ export class CommunicatorService {
 - Hedef Kişi: ${ctx.icpLabel}
 - Hedef Pozisyon: ${ctx.jobTitles.join(', ')}
 - Hedef Kişinin Sorunları: ${ctx.painPoints.join(', ')}
-- Sektör: ${ctx.industry}${stepNote}${templateNote}${variantNote}${langNote}
+- Sektör: ${ctx.industry}${stepNote}${templateNote}${platformNote}${customNote}${variantNote}${langNote}
 
 ## ÇIKTI FORMATI (SADECE JSON, başka hiçbir şey yazma):
 {"subject":"string","body":"string","variant":"${variant}"}`;
@@ -230,6 +243,14 @@ export class CommunicatorService {
         ? `\n\nTÜM çıktıyı ${ctx.targetLanguage} dilinde yaz. Sadece JSON key'leri İngilizce kalsın.`
         : '';
 
+    const platformNote = ctx.platformRulesContext
+      ? `\n\n## PLATFORM KURALLARI:\n${ctx.platformRulesContext}`
+      : '';
+
+    const customNote = ctx.customPromptText
+      ? `\n\n## STRATEJİST'TEN ÖZEL TALİMAT:\n${ctx.customPromptText}`
+      : '';
+
     const prompt = `Sen dünya çapında bir B2B satış koçusun. Aşağıdaki bilgileri kullanarak bir cold call senaryosu yaz.
 
 ## SENARYO YAPISI:
@@ -254,7 +275,7 @@ export class CommunicatorService {
 - Hedef Pozisyon: ${ctx.jobTitles.join(', ')}
 - Sorunları: ${ctx.painPoints.join(', ')}
 - Ton: ${ctx.toneOfVoice}
-- Dil: ${ctx.targetLanguage}${langNote}
+- Dil: ${ctx.targetLanguage}${platformNote}${customNote}${langNote}
 
 ## ÇIKTI FORMATI (SADECE JSON):
 {

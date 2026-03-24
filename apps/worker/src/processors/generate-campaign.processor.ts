@@ -96,7 +96,45 @@ export class GenerateCampaignProcessor {
         }
       }
 
-      // ── 5. Context oluştur ─────────────────────────────────────────
+      // ── 5. Platform learned rules context (Faz 5) ─────────────────
+      let platformRulesContext: string | undefined;
+      if (project?.industry) {
+        const platformRules = await this.db.query.platformLearnedRules.findMany({
+          where: and(
+            eq(schema.platformLearnedRules.industry, project.industry),
+            eq(schema.platformLearnedRules.isActive, true),
+          ),
+          orderBy: (t: any, { desc }: any) => [desc(t.confidenceScore)],
+          limit: 5,
+        }) as schema.PlatformLearnedRule[];
+
+        if (platformRules.length > 0) {
+          const ruleDescriptions = platformRules.map((r) => {
+            const content = r.ruleContent as Record<string, unknown>;
+            return `- [${r.ruleType}] ${content?.description ?? JSON.stringify(content)} (güven: %${Math.round(r.confidenceScore * 100)}, ${r.sourceProjectCount} projeden)`;
+          });
+          platformRulesContext = `Bu sektörde kanıtlanmış pattern'ler:\n${ruleDescriptions.join('\n')}`;
+          this.logger.log(`[generate-campaign] Injecting ${platformRules.length} platform rules`);
+        }
+      }
+
+      // ── 6. Proje bazlı aktif prompt versiyonu kontrolü ───────────────
+      const activePrompt = await this.db.query.promptVersions.findFirst({
+        where: and(
+          eq(schema.promptVersions.projectId, projectId),
+          eq(schema.promptVersions.agentType, 'communicator'),
+          eq(schema.promptVersions.isActive, true),
+        ),
+        orderBy: (t: any, { desc }: any) => [desc(t.version)],
+      }) as schema.PromptVersion | null;
+
+      if (activePrompt) {
+        this.logger.log(
+          `[generate-campaign] Using custom prompt version ${activePrompt.version} for project ${projectId}`,
+        );
+      }
+
+      // ── 7. Context oluştur ─────────────────────────────────────────
       const ctx = {
         productDescription: analysis.productDescription ?? '',
         valueProposition: analysis.valueProposition ?? '',
@@ -108,13 +146,15 @@ export class GenerateCampaignProcessor {
         industry: project?.industry ?? 'saas',
         targetLanguage,
         industryTemplateHint,
+        platformRulesContext,       // Faz 5: platform kuralları
+        customPromptText: activePrompt?.promptText,  // Faz 5: özel prompt
       };
 
-      // ── 6. İçerik üret ─────────────────────────────────────────────
+      // ── 8. İçerik üret ─────────────────────────────────────────────
       this.logger.log(`[generate-campaign] Calling CommunicatorService...`);
       const result = await this.communicatorService.generateAll(ctx);
 
-      // ── 7. Email sequences kaydet ───────────────────────────────────
+      // ── 9. Email sequences kaydet ───────────────────────────────────
       await this.db
         .delete(schema.emailSequences)
         .where(eq(schema.emailSequences.campaignId, campaignId));
@@ -154,7 +194,7 @@ export class GenerateCampaignProcessor {
         });
       }
 
-      // ── 8. Call script kaydet ───────────────────────────────────────
+      // ── 10. Call script kaydet ──────────────────────────────────────
       if (campaign.type === 'cold_call' || campaign.type === 'multi_channel') {
         const existingScripts = await this.db.query.callScripts.findMany({
           where: eq(schema.callScripts.campaignId, campaignId),
@@ -173,7 +213,7 @@ export class GenerateCampaignProcessor {
         });
       }
 
-      // ── 9. Content status güncelle ─────────────────────────────────
+      // ── 11. Content status güncelle ────────────────────────────────
       await this.db
         .update(schema.campaigns)
         .set({
@@ -202,6 +242,8 @@ export class GenerateCampaignProcessor {
           emailStepsGenerated: result.emailSteps.length,
           tokensUsed: result.tokensUsed,
           model: result.modelUsed,
+          platformRulesInjected: !!platformRulesContext,
+          customPromptUsed: !!activePrompt,
         },
         status: 'success',
         tokensUsed: result.tokensUsed,

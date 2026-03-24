@@ -19,6 +19,8 @@ import { InboxModule } from './modules/inbox/inbox.module';
 import { PhoneVerificationModule } from './modules/phone-verification/phone-verification.module';
 import { ConsentModule } from './modules/consent/consent.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
+// ── Faz 5 ───────────────────────────────────────────────────────────────────
+import { StrategyModule } from './modules/strategy/strategy.module';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
 import { DatabaseModule } from './database/database.module';
 
@@ -55,6 +57,8 @@ import { DatabaseModule } from './database/database.module';
     PhoneVerificationModule,
     ConsentModule,
     WebhooksModule,
+    // ── Faz 5 ─────────────────────────────────────────────────────────────
+    StrategyModule,
   ],
 })
 export class AppModule implements NestModule {

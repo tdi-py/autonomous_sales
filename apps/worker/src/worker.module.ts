@@ -33,6 +33,9 @@ import { InboxSyncService } from './services/inbox-sync.service';
 // ── Faz 4 ──────────────────────────────────────────────────────────────────
 import { PhoneVerifierService } from './services/phone-verifier.service';
 import { VapiCallService } from './services/vapi-call.service';
+// ── Faz 5 ──────────────────────────────────────────────────────────────────
+import { AnalyticsService } from './services/analytics.service';
+import { StrategistService } from './services/strategist.service';
 
 @Controller('health')
 class HealthController {
@@ -90,6 +93,9 @@ class HealthController {
     // ── Faz 4 ───────────────────────────────────────────────────────────────
     PhoneVerifierService,
     VapiCallService,
+    // ── Faz 5 ───────────────────────────────────────────────────────────────
+    AnalyticsService,
+    StrategistService,
     // ── Processors ─────────────────────────────────────────────────────────
     AnalyzeUrlProcessor,
     GenerateCampaignProcessor,

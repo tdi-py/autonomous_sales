@@ -85,6 +85,23 @@ export class UpdateProjectDto {
   @IsString()
   @MaxLength(10)
   defaultLanguage?: string;
+
+  // Faz 5: Strategy auto-mode ayarları ve diğer proje geneli settings
+  @ApiPropertyOptional({
+    description: 'Project settings JSON — strategy auto-mode, thresholds, etc.',
+    example: {
+      strategyAutoMode: false,
+      strategyReviewInterval: 24,
+      autoApplyAbTest: false,
+      autoApplyPromptUpdates: false,
+      autoApplyObjectionHandlers: true,
+      autoPauseBounceThreshold: 10,
+      autoStopSpamThreshold: 0.3,
+    },
+  })
+  @IsOptional()
+  @IsObject()
+  settings?: Record<string, unknown>;
 }
 
 export class CreateIcpProfileDto {

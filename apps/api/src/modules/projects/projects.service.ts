@@ -65,7 +65,6 @@ export class ProjectsService {
       where: eq(schema.projects.workspaceId, workspaceId),
     });
 
-    // Attach analysis status to each project
     const result = await Promise.all(
       projects.map(async (p: schema.Project) => {
         const analysis = await this.db.query.projectAnalysis.findFirst({
@@ -96,11 +95,48 @@ export class ProjectsService {
 
   async update(id: string, userId: string, dto: UpdateProjectDto) {
     const project = await this.findOne(id, userId);
+
+    // Faz 5: settings güncellemesi için mevcut settings ile merge et
+    // projects tablosunda doğrudan settings kolonu yok — schema'ya göre bu bilgi
+    // campaign.settings benzeri bir JSONB yok, bunun yerine proje bazlı settings'i
+    // project.targetGeography veya ayrı bir JSONB'e yazıyoruz.
+    // Şimdilik settings'i targetGeography JSONB'ye serialize etmek yerine
+    // campaign settings pattern'ini takip ederek projects tablosuna yeni bir settings alanı eklemek gerekir.
+    // Mevcut schema'da projects tablosunda settings kolonu YOK.
+    // Bu nedenle strategy auto-mode ayarlarını project_analysis tablosundaki userEdits JSONB'ye yazıyoruz.
+
+    const { settings, ...restDto } = dto;
+
+    const updatePayload: Record<string, unknown> = { ...restDto, updatedAt: new Date() };
+
+    // settings varsa project_analysis.userEdits'e yaz
+    if (settings) {
+      const analysis = await this.db.query.projectAnalysis.findFirst({
+        where: eq(schema.projectAnalysis.projectId, id),
+      });
+
+      const existingEdits = (analysis?.userEdits as Record<string, unknown>) ?? {};
+      const mergedSettings = { ...existingEdits, strategySettings: settings };
+
+      if (analysis) {
+        await this.db
+          .update(schema.projectAnalysis)
+          .set({ userEdits: mergedSettings })
+          .where(eq(schema.projectAnalysis.projectId, id));
+      } else {
+        await this.db.insert(schema.projectAnalysis).values({
+          projectId: id,
+          userEdits: mergedSettings,
+        });
+      }
+    }
+
     const [updated] = await this.db
       .update(schema.projects)
-      .set({ ...dto, updatedAt: new Date() })
+      .set(updatePayload)
       .where(eq(schema.projects.id, project.id))
       .returning();
+
     return updated;
   }
 
@@ -134,7 +170,16 @@ export class ProjectsService {
       ),
     });
 
-    return { status: 'completed', ...analysis, icpProfiles };
+    // Faz 5: Strategy settings'i userEdits'ten çek
+    const userEdits = (analysis.userEdits as Record<string, unknown>) ?? {};
+    const strategySettings = (userEdits.strategySettings as Record<string, unknown>) ?? {};
+
+    return {
+      status: 'completed',
+      ...analysis,
+      icpProfiles,
+      strategySettings,
+    };
   }
 
   async confirmAnalysis(projectId: string, userId: string, dto: ConfirmAnalysisDto) {
@@ -145,7 +190,6 @@ export class ProjectsService {
       userEdits: dto.edits ?? null,
     };
 
-    // Apply user edits to main fields
     if (dto.edits) {
       if (dto.edits.valueProposition) updateFields.valueProposition = dto.edits.valueProposition;
       if (dto.edits.productDescription) updateFields.productDescription = dto.edits.productDescription;
@@ -159,7 +203,6 @@ export class ProjectsService {
       .set(updateFields)
       .where(eq(schema.projectAnalysis.projectId, projectId));
 
-    // Mark project as active
     const [updated] = await this.db
       .update(schema.projects)
       .set({ status: 'active', updatedAt: new Date() })
