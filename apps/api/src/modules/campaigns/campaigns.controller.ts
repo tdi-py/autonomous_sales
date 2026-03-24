@@ -17,6 +17,8 @@ import {
   ApiQuery,
   ApiParam,
 } from '@nestjs/swagger';
+import { IsArray, IsOptional, IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CampaignsService } from './campaigns.service';
 import {
   CreateCampaignDto,
@@ -27,6 +29,18 @@ import {
   UpdateCallScriptDto,
 } from './dto/campaign.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+
+class AddLeadsDto {
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  leadIds?: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  icpProfileId?: string;
+}
 
 type AuthRequest = { user: { userId: string } };
 
@@ -40,9 +54,7 @@ export class CampaignsController {
   // ─── Campaign CRUD ─────────────────────────────────────────────────────────
 
   @Post()
-  @ApiOperation({
-    summary: 'Kampanya oluştur — otomatik olarak içerik üretim job\'ını tetikler',
-  })
+  @ApiOperation({ summary: 'Kampanya oluştur' })
   create(@Request() req: AuthRequest, @Body() dto: CreateCampaignDto) {
     return this.campaignsService.create(req.user.userId, dto);
   }
@@ -55,7 +67,7 @@ export class CampaignsController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Kampanya detayı — içerik üretildiyse sequence + script dahil' })
+  @ApiOperation({ summary: 'Kampanya detayı' })
   findOne(@Param('id') id: string, @Request() req: AuthRequest) {
     return this.campaignsService.findOne(id, req.user.userId);
   }
@@ -79,9 +91,7 @@ export class CampaignsController {
   // ─── Content Status ────────────────────────────────────────────────────────
 
   @Get(':id/content-status')
-  @ApiOperation({
-    summary: 'İçerik üretim durumunu kontrol et (polling için)',
-  })
+  @ApiOperation({ summary: 'İçerik üretim durumunu kontrol et' })
   getContentStatus(@Param('id') id: string, @Request() req: AuthRequest) {
     return this.campaignsService.getContentStatus(id, req.user.userId);
   }
@@ -89,13 +99,13 @@ export class CampaignsController {
   // ─── Email Sequences ───────────────────────────────────────────────────────
 
   @Get(':id/sequences')
-  @ApiOperation({ summary: 'Email dizilerini getir — adım+varyant olarak gruplandırılmış' })
+  @ApiOperation({ summary: 'Email dizilerini getir' })
   getSequences(@Param('id') id: string, @Request() req: AuthRequest) {
     return this.campaignsService.getSequences(id, req.user.userId);
   }
 
   @Post(':id/sequences')
-  @ApiOperation({ summary: 'Email dizisine manuel adım ekle' })
+  @ApiOperation({ summary: 'Email dizisine adım ekle' })
   createSequenceStep(
     @Param('id') id: string,
     @Request() req: AuthRequest,
@@ -105,7 +115,7 @@ export class CampaignsController {
   }
 
   @Patch(':id/sequences/:sequenceId')
-  @ApiOperation({ summary: 'Email adımını düzenle (subject + body)' })
+  @ApiOperation({ summary: 'Email adımını düzenle' })
   updateSequenceStep(
     @Param('id') id: string,
     @Param('sequenceId') sequenceId: string,
@@ -118,7 +128,7 @@ export class CampaignsController {
   // ─── Call Scripts ──────────────────────────────────────────────────────────
 
   @Get(':id/scripts')
-  @ApiOperation({ summary: 'Call script\'lerini getir (versiyona göre sıralı)' })
+  @ApiOperation({ summary: 'Call script\'lerini getir' })
   getScripts(@Param('id') id: string, @Request() req: AuthRequest) {
     return this.campaignsService.getScripts(id, req.user.userId);
   }
@@ -147,7 +157,7 @@ export class CampaignsController {
   // ─── Regenerate ────────────────────────────────────────────────────────────
 
   @Post(':id/regenerate')
-  @ApiOperation({ summary: 'Tüm içeriği yeniden üret (mevcut içeriği sil, yeni versiyon)' })
+  @ApiOperation({ summary: 'Tüm içeriği yeniden üret' })
   regenerate(@Param('id') id: string, @Request() req: AuthRequest) {
     return this.campaignsService.regenerate(id, req.user.userId);
   }
@@ -166,11 +176,60 @@ export class CampaignsController {
   // ─── Preflight Check ───────────────────────────────────────────────────────
 
   @Get(':id/preflight-check')
-  @ApiOperation({
-    summary: 'Kampanya başlatma ön kontrol — email, DNS, ısındırma, lead, spam testi',
-  })
-  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Kampanya başlatma ön kontrol' })
   preflightCheck(@Param('id') id: string, @Request() req: AuthRequest) {
     return this.campaignsService.preflightCheck(id, req.user.userId);
+  }
+
+  // ─── Faz 3: Launch / Pause / Resume / Stop ────────────────────────────────
+
+  @Post(':id/launch')
+  @ApiOperation({ summary: 'Kampanyayı başlat — preflight + BullMQ repeatable job' })
+  launch(@Param('id') id: string, @Request() req: AuthRequest) {
+    return this.campaignsService.launch(id, req.user.userId);
+  }
+
+  @Post(':id/pause')
+  @ApiOperation({ summary: 'Kampanyayı duraklat' })
+  pause(@Param('id') id: string, @Request() req: AuthRequest) {
+    return this.campaignsService.pause(id, req.user.userId);
+  }
+
+  @Post(':id/resume')
+  @ApiOperation({ summary: 'Kampanyayı devam ettir' })
+  resume(@Param('id') id: string, @Request() req: AuthRequest) {
+    return this.campaignsService.resume(id, req.user.userId);
+  }
+
+  @Post(':id/stop')
+  @ApiOperation({ summary: 'Kampanyayı tamamen durdur' })
+  stop(@Param('id') id: string, @Request() req: AuthRequest) {
+    return this.campaignsService.stop(id, req.user.userId);
+  }
+
+  // ─── Faz 3: Leads ──────────────────────────────────────────────────────────
+
+  @Post(':id/leads')
+  @ApiOperation({ summary: 'Lead\'leri kampanyaya ekle' })
+  addLeads(
+    @Param('id') id: string,
+    @Request() req: AuthRequest,
+    @Body() dto: AddLeadsDto,
+  ) {
+    return this.campaignsService.addLeads(id, req.user.userId, dto);
+  }
+
+  @Get(':id/leads')
+  @ApiOperation({ summary: 'Kampanyaya atanmış lead\'leri listele' })
+  getCampaignLeads(@Param('id') id: string, @Request() req: AuthRequest) {
+    return this.campaignsService.getCampaignLeads(id, req.user.userId);
+  }
+
+  // ─── Faz 3: Metrics ────────────────────────────────────────────────────────
+
+  @Get(':id/metrics')
+  @ApiOperation({ summary: 'Kampanya metrikleri — open/click/reply/bounce rate + A/B' })
+  getMetrics(@Param('id') id: string, @Request() req: AuthRequest) {
+    return this.campaignsService.getMetrics(id, req.user.userId);
   }
 }

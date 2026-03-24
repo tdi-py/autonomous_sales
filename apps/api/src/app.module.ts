@@ -12,34 +12,28 @@ import { AgentsModule } from './modules/agents/agents.module';
 import { ComplianceModule } from './modules/compliance/compliance.module';
 import { HealthModule } from './modules/health/health.module';
 import { EmailAccountsModule } from './modules/email-accounts/email-accounts.module';
+// ── Faz 3 ───────────────────────────────────────────────────────────────────
+import { TrackingModule } from './modules/tracking/tracking.module';
+import { InboxModule } from './modules/inbox/inbox.module';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
 import { DatabaseModule } from './database/database.module';
 
 @Module({
   imports: [
-    // ─── Config ─────────────────────────────────────────────────────────────
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '../../.env',
     }),
-
-    // ─── Rate Limiting ───────────────────────────────────────────────────────
     ThrottlerModule.forRoot([
       {
-        ttl: 60_000,  // 1 minute window
-        limit: 100,   // 100 requests per window
+        ttl: 60_000,
+        limit: 100,
       },
     ]),
-
-    // ─── BullMQ / Redis ──────────────────────────────────────────────────────
     BullModule.forRoot({
       url: process.env.REDIS_URL ?? 'redis://localhost:6379',
     }),
-
-    // ─── Database ────────────────────────────────────────────────────────────
     DatabaseModule,
-
-    // ─── Feature Modules ─────────────────────────────────────────────────────
     AuthModule,
     UsersModule,
     WorkspacesModule,
@@ -49,8 +43,10 @@ import { DatabaseModule } from './database/database.module';
     AgentsModule,
     ComplianceModule,
     HealthModule,
-    // ── Faz 2.5 ─────────────────────────────────────────────────────
     EmailAccountsModule,
+    // ── Faz 3 ─────────────────────────────────────────────────────────────
+    TrackingModule,
+    InboxModule,
   ],
 })
 export class AppModule implements NestModule {

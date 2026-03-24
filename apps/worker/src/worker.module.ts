@@ -1,7 +1,7 @@
 import { Module, Controller, Get } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
-import { ScheduleModule } from '@nestjs/schedule'; // ✅ Import
+import { ScheduleModule } from '@nestjs/schedule';
 import { QUEUE_NAMES } from '@autonomous-sales/shared';
 
 import { AnalyzeUrlProcessor } from './processors/analyze-url.processor';
@@ -11,18 +11,24 @@ import { WarmupExecuteProcessor } from './processors/warmup-execute.processor';
 import { PhoneVerifyProcessor } from './processors/phone-verify.processor';
 import { StrategyReviewProcessor } from './processors/strategy-review.processor';
 import { ComplianceCheckProcessor } from './processors/compliance-check.processor';
+import { InboxSyncProcessor, InboxSyncCronService } from './processors/inbox-sync.processor';
+
 import { DatabaseModule } from './database/database.module';
 import { ScraperService } from './services/scraper.service';
 import { AnalyzerService } from './services/analyzer.service';
 import { CommunicatorService } from './services/communicator.service';
 import { ContentCheckerService } from './services/content-checker.service';
-// ── Faz 2.5 ──────────────────────────────────────────────────────────────────
 import { SmtpService } from './services/smtp.service';
 import { ImapService } from './services/imap.service';
 import { DnsCheckerService } from './services/dns-checker.service';
 import { WarmupService } from './services/warmup.service';
 import { DeliverabilityTesterService } from './services/deliverability-tester.service';
 import { WarmupCronService } from './services/warmup-cron.service';
+// ── Faz 3 ──────────────────────────────────────────────────────────────────
+import { TrackingService } from './services/tracking.service';
+import { EmailSenderService } from './services/email-sender.service';
+import { BounceHandlerService } from './services/bounce-handler.service';
+import { InboxSyncService } from './services/inbox-sync.service';
 
 @Controller('health')
 class HealthController {
@@ -35,10 +41,7 @@ class HealthController {
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: '../../.env' }),
-
-    // ✅ Fixed: ScheduleModule.forRoot() must be inside imports array, not called standalone
     ScheduleModule.forRoot(),
-
     BullModule.forRoot({
       url: process.env.REDIS_URL ?? 'redis://localhost:6379',
       defaultJobOptions: {
@@ -54,6 +57,7 @@ class HealthController {
       { name: QUEUE_NAMES.PHONE_VERIFY },
       { name: QUEUE_NAMES.STRATEGY_REVIEW },
       { name: QUEUE_NAMES.COMPLIANCE_CHECK },
+      { name: 'inbox-sync' },
     ),
     DatabaseModule,
   ],
@@ -71,7 +75,13 @@ class HealthController {
     DnsCheckerService,
     WarmupService,
     DeliverabilityTesterService,
-    WarmupCronService, // ✅ Daily cron job scheduler
+    WarmupCronService,
+    // ── Faz 3 ───────────────────────────────────────────────────────────────
+    TrackingService,
+    EmailSenderService,
+    BounceHandlerService,
+    InboxSyncService,
+    InboxSyncCronService,
     // ── Processors ─────────────────────────────────────────────────────────
     AnalyzeUrlProcessor,
     GenerateCampaignProcessor,
@@ -80,6 +90,7 @@ class HealthController {
     PhoneVerifyProcessor,
     StrategyReviewProcessor,
     ComplianceCheckProcessor,
+    InboxSyncProcessor,
   ],
 })
 export class WorkerModule {}

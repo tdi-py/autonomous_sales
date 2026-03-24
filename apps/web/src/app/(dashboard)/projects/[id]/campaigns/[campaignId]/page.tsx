@@ -1,18 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft,
-  Loader2,
-  RefreshCw,
-  BarChart2,
-  Mail,
-  Phone,
-  Users,
-  TrendingUp,
-  Rocket,
+  ArrowLeft, Loader2, RefreshCw, BarChart2, Mail,
+  Phone, Users, TrendingUp, Rocket, Pause, Play, Square,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -22,63 +15,38 @@ import { ContentGenerating } from '@/components/campaigns/content-generating';
 import { PreflightCheckModal } from '@/components/campaigns/preflight-check-modal';
 import { useCampaignContentStatus } from '@/hooks/use-campaign-content-status';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 interface EmailSequence {
-  id: string;
-  stepOrder: number;
-  subjectTemplate: string;
-  bodyTemplate: string;
-  delayDays: number;
-  variantLabel: string;
+  id: string; stepOrder: number; subjectTemplate: string;
+  bodyTemplate: string; delayDays: number; variantLabel: string;
 }
-
 interface CallScript {
-  id: string;
-  version: number;
-  openingScript: string | null;
-  dialogueTree: Record<string, unknown>;
-  objectionHandlers: Array<{ objection: string; response: string }>;
-  closingScript: string | null;
-  language: string;
+  id: string; version: number; openingScript: string | null;
+  dialogueTree: Record<string, unknown>; objectionHandlers: Array<{ objection: string; response: string }>;
+  closingScript: string | null; language: string;
 }
-
-interface SequenceGroups {
-  [key: string]: {
-    A?: EmailSequence;
-    B?: EmailSequence;
-  };
-}
-
 interface Campaign {
-  id: string;
-  name: string;
+  id: string; name: string;
   type: 'cold_email' | 'cold_call' | 'linkedin' | 'multi_channel';
   status: 'draft' | 'active' | 'paused' | 'completed';
-  settings: Record<string, unknown>;
-  contentStatus: string;
-  sequences?: {
-    grouped: SequenceGroups;
-    flat: EmailSequence[];
-  };
-  scripts?: CallScript[];
-  projectId: string;
-  createdAt: string;
+  settings: Record<string, unknown>; contentStatus: string;
+  sequences?: { grouped: Record<string, { A?: EmailSequence; B?: EmailSequence }>; flat: EmailSequence[] };
+  scripts?: CallScript[]; projectId: string; createdAt: string;
+}
+interface Metrics {
+  total_leads: number; sent: number; opened: number; clicked: number;
+  replied: number; bounced: number; open_rate: string; click_rate: string;
+  reply_rate: string; bounce_rate: string;
+  by_variant: { A: { sent: number; opened: number; open_rate: string }; B: { sent: number; opened: number; open_rate: string } };
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
 const TYPE_LABEL: Record<Campaign['type'], string> = {
-  cold_email:    '📧 Cold Email',
-  cold_call:     '📞 Cold Call',
-  linkedin:      '💼 LinkedIn',
-  multi_channel: '🚀 Multi-Channel',
+  cold_email: '📧 Cold Email', cold_call: '📞 Cold Call',
+  linkedin: '💼 LinkedIn', multi_channel: '🚀 Multi-Channel',
 };
-
 const STATUS_STYLE: Record<Campaign['status'], string> = {
-  draft:     'bg-gray-500/10 text-gray-500 border-gray-500/20',
-  active:    'bg-green-500/10 text-green-600 border-green-500/20',
-  paused:    'bg-yellow-500/10 text-yellow-600 border-yellow-500/20',
+  draft: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
+  active: 'bg-green-500/10 text-green-600 border-green-500/20',
+  paused: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20',
   completed: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
 };
 
@@ -88,60 +56,53 @@ function getToken(): string {
   return match?.[1] ?? '';
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
-
 export default function CampaignDetailPage() {
   const { id: projectId, campaignId } = useParams<{ id: string; campaignId: string }>();
-
   const [campaign, setCampaign] = useState<Campaign | null>(null);
+  const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
   const [regeneratingStep, setRegeneratingStep] = useState<number | null>(null);
   const [isRegenerating, setIsRegenerating] = useState(false);
-  // ✅ Preflight modal state
   const [showPreflight, setShowPreflight] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
 
   const contentStatus = (campaign?.settings?.contentStatus as string) ?? 'pending';
   const isGenerating = contentStatus === 'generating';
 
   useCampaignContentStatus({
-    campaignId,
-    enabled: isGenerating,
+    campaignId, enabled: isGenerating,
     onReady: () => loadCampaign(),
     onError: () => loadCampaign(),
   });
 
-  async function loadCampaign() {
+  const loadCampaign = useCallback(async () => {
     const token = getToken();
     try {
-      const data = await api.get<Campaign>(`/campaigns/${campaignId}`, token);
+      const [data, metricsData] = await Promise.all([
+        api.get<Campaign>(`/campaigns/${campaignId}`, token),
+        api.get<Metrics>(`/campaigns/${campaignId}/metrics`, token).catch(() => null),
+      ]);
       setCampaign(data);
+      setMetrics(metricsData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kampanya yüklenemedi');
+      setError((err as Error).message);
     } finally {
       setLoading(false);
     }
-  }
-
-  useEffect(() => {
-    loadCampaign();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaignId]);
+
+  useEffect(() => { loadCampaign(); }, [loadCampaign]);
 
   async function handleRegenerate() {
     const token = getToken();
     setIsRegenerating(true);
-    setError('');
     try {
       await api.post(`/campaigns/${campaignId}/regenerate`, {}, token);
-      setCampaign((prev) =>
-        prev
-          ? { ...prev, settings: { ...prev.settings, contentStatus: 'generating' } }
-          : prev,
-      );
+      setCampaign((prev) => prev ? { ...prev, settings: { ...prev.settings, contentStatus: 'generating' } } : prev);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Yeniden üretim başlatılamadı');
+      setError((err as Error).message);
     } finally {
       setIsRegenerating(false);
     }
@@ -152,68 +113,63 @@ export default function CampaignDetailPage() {
     setRegeneratingStep(stepOrder);
     try {
       await api.post(`/campaigns/${campaignId}/regenerate-step/${stepOrder}`, {}, token);
-      setTimeout(() => {
-        loadCampaign();
-        setRegeneratingStep(null);
-      }, 6000);
-    } catch {
-      setRegeneratingStep(null);
+      setTimeout(() => { loadCampaign(); setRegeneratingStep(null); }, 6000);
+    } catch { setRegeneratingStep(null); }
+  }
+
+  async function handlePause() {
+    const token = getToken(); setActionLoading(true);
+    try { await api.post(`/campaigns/${campaignId}/pause`, {}, token); await loadCampaign(); }
+    catch (err) { setError((err as Error).message); }
+    finally { setActionLoading(false); }
+  }
+
+  async function handleResume() {
+    const token = getToken(); setActionLoading(true);
+    try { await api.post(`/campaigns/${campaignId}/resume`, {}, token); await loadCampaign(); }
+    catch (err) { setError((err as Error).message); }
+    finally { setActionLoading(false); }
+  }
+
+  async function handleStop() {
+    if (!confirm('Kampanyayı tamamen durdurmak istediğinize emin misiniz?')) return;
+    const token = getToken(); setActionLoading(true);
+    try { await api.post(`/campaigns/${campaignId}/stop`, {}, token); await loadCampaign(); }
+    catch (err) { setError((err as Error).message); }
+    finally { setActionLoading(false); }
+  }
+
+  async function handleLaunchConfirmed() {
+    const token = getToken(); setActionLoading(true);
+    try {
+      await api.post(`/campaigns/${campaignId}/launch`, {}, token);
+      setShowPreflight(false);
+      await loadCampaign();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setActionLoading(false);
     }
   }
 
-  function handleLaunchConfirmed() {
-    setShowPreflight(false);
-    // Faz 3'te gerçek başlatma mantığı eklenecek
-    alert('Kampanya başlatma Faz 3\'te devreye girecek.');
-  }
-
-  // ── Loading / Error ────────────────────────────────────────────────────────
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (!campaign) {
-    return (
-      <div className="max-w-5xl space-y-4">
-        <Link
-          href={`/projects/${projectId}/campaigns`}
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" /> Kampanyalar
-        </Link>
-        <p className="text-sm text-destructive">{error || 'Kampanya bulunamadı.'}</p>
-      </div>
-    );
-  }
-
-  // ── Derived values ─────────────────────────────────────────────────────────
+  if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
+  if (!campaign) return <div className="max-w-5xl"><Link href={`/projects/${projectId}/campaigns`} className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" /> Kampanyalar</Link><p className="text-sm text-destructive mt-4">{error || 'Kampanya bulunamadı.'}</p></div>;
 
   const showEmail = campaign.type === 'cold_email' || campaign.type === 'multi_channel';
-  const showCall  = campaign.type === 'cold_call'  || campaign.type === 'multi_channel';
-  const scriptOnly = campaign.settings?.scriptOnly as boolean | undefined;
-  const sequences: SequenceGroups = campaign.sequences?.grouped ?? {};
-  const scripts: CallScript[] = campaign.scripts ?? [];
-  const additionalNotes = campaign.settings?.additionalNotes as string | undefined;
+  const showCall = campaign.type === 'cold_call' || campaign.type === 'multi_channel';
+  const sequences = campaign.sequences?.grouped ?? {};
+  const scripts = campaign.scripts ?? [];
 
   const TABS = [
-    { id: 'overview',    label: 'Overview',        icon: BarChart2  },
-    ...(showEmail ? [{ id: 'email', label: 'Email Dizisi',    icon: Mail   }] : []),
-    ...(showCall  ? [{ id: 'call',  label: 'Call Senaryosu',  icon: Phone  }] : []),
-    { id: 'leads',       label: 'Leads',            icon: Users      },
-    { id: 'performance', label: 'Performance',      icon: TrendingUp },
+    { id: 'overview', label: 'Overview', icon: BarChart2 },
+    ...(showEmail ? [{ id: 'email', label: 'Email Dizisi', icon: Mail }] : []),
+    ...(showCall ? [{ id: 'call', label: 'Call Senaryosu', icon: Phone }] : []),
+    { id: 'leads', label: 'Leads', icon: Users },
+    { id: 'performance', label: 'Performance', icon: TrendingUp },
   ];
-
-  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6 max-w-5xl">
-
-      {/* Preflight Modal */}
       {showPreflight && (
         <PreflightCheckModal
           campaignId={campaignId}
@@ -224,11 +180,7 @@ export default function CampaignDetailPage() {
         />
       )}
 
-      {/* Back */}
-      <Link
-        href={`/projects/${projectId}/campaigns`}
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
+      <Link href={`/projects/${projectId}/campaigns`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
         <ArrowLeft className="w-3.5 h-3.5" /> Kampanyalar
       </Link>
 
@@ -237,66 +189,58 @@ export default function CampaignDetailPage() {
         <div className="space-y-1">
           <div className="flex items-center gap-3">
             <h2 className="text-xl font-semibold tracking-tight">{campaign.name}</h2>
-            <span
-              className={cn(
-                'text-xs font-medium px-2.5 py-1 rounded-full border capitalize',
-                STATUS_STYLE[campaign.status],
-              )}
-            >
+            <span className={cn('text-xs font-medium px-2.5 py-1 rounded-full border capitalize', STATUS_STYLE[campaign.status])}>
               {campaign.status}
             </span>
           </div>
-          <p className="text-sm text-muted-foreground">
-            {TYPE_LABEL[campaign.type]}
-            {contentStatus === 'ready'      && ' · ✅ İçerik hazır'}
-            {contentStatus === 'generating' && ' · ⏳ Üretiliyor...'}
-            {contentStatus === 'error'      && ' · ❌ Üretim hatası'}
-          </p>
+          <p className="text-sm text-muted-foreground">{TYPE_LABEL[campaign.type]}</p>
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleRegenerate}
-            disabled={isRegenerating || isGenerating}
-            className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-border bg-background text-sm hover:bg-accent transition-colors disabled:opacity-50"
-          >
+          <button onClick={handleRegenerate} disabled={isRegenerating || isGenerating}
+            className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-border bg-background text-sm hover:bg-accent transition-colors disabled:opacity-50">
             <RefreshCw className={cn('w-4 h-4', (isRegenerating || isGenerating) && 'animate-spin')} />
             Yeniden Üret
           </button>
-          {/* ✅ Fixed: now opens preflight check modal instead of disabled button */}
-          <button
-            onClick={() => setShowPreflight(true)}
-            className="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
-          >
-            <Rocket className="w-4 h-4" />
-            Kampanyayı Başlat
-          </button>
+
+          {/* Status-based action buttons */}
+          {campaign.status === 'draft' && (
+            <button onClick={() => setShowPreflight(true)}
+              className="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">
+              <Rocket className="w-4 h-4" /> Başlat
+            </button>
+          )}
+          {campaign.status === 'active' && (
+            <>
+              <button onClick={handlePause} disabled={actionLoading}
+                className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-border bg-background text-sm hover:bg-accent transition-colors disabled:opacity-50">
+                <Pause className="w-4 h-4" /> Duraklat
+              </button>
+              <button onClick={handleStop} disabled={actionLoading}
+                className="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-destructive/10 text-destructive text-sm hover:bg-destructive/20 transition-colors disabled:opacity-50">
+                <Square className="w-4 h-4" /> Durdur
+              </button>
+            </>
+          )}
+          {campaign.status === 'paused' && (
+            <button onClick={handleResume} disabled={actionLoading}
+              className="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50">
+              <Play className="w-4 h-4" /> Devam Et
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Error banner */}
-      {error && (
-        <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
+      {error && <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{error}</div>}
 
       {/* Tab nav */}
       <div className="border-b border-border">
         <nav className="flex gap-0 -mb-px overflow-x-auto">
           {TABS.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id)}
-              className={cn(
-                'inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors shrink-0',
-                activeTab === id
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground',
-              )}
-            >
-              <Icon className="w-4 h-4" />
-              {label}
+            <button key={id} onClick={() => setActiveTab(id)}
+              className={cn('inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors shrink-0',
+                activeTab === id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}>
+              <Icon className="w-4 h-4" />{label}
             </button>
           ))}
         </nav>
@@ -308,26 +252,9 @@ export default function CampaignDetailPage() {
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {[
-                { label: 'Kampanya Tipi',  value: TYPE_LABEL[campaign.type] },
-                { label: 'Durum',          value: campaign.status },
-                { label: 'Dil',            value: String(campaign.settings?.targetLanguage ?? 'en').toUpperCase() },
-                {
-                  label: 'İçerik Durumu',
-                  value:
-                    contentStatus === 'ready'      ? '✅ Hazır'       :
-                    contentStatus === 'generating' ? '⏳ Üretiliyor'  :
-                    contentStatus === 'error'      ? '❌ Hata'         : '— Bekliyor',
-                },
-                {
-                  label: 'Email Adımları',
-                  value: campaign.sequences?.flat?.length
-                    ? `${Math.ceil(campaign.sequences.flat.length / 2)} adım (A/B)`
-                    : '—',
-                },
-                {
-                  label: 'Script Versiyonu',
-                  value: scripts.length > 0 ? `v${scripts[0].version}` : '—',
-                },
+                { label: 'Kampanya Tipi', value: TYPE_LABEL[campaign.type] },
+                { label: 'Durum', value: campaign.status },
+                { label: 'Dil', value: String(campaign.settings?.targetLanguage ?? 'en').toUpperCase() },
               ].map(({ label, value }) => (
                 <div key={label} className="rounded-lg border border-border bg-card px-4 py-3 space-y-1">
                   <p className="text-xs text-muted-foreground">{label}</p>
@@ -336,19 +263,26 @@ export default function CampaignDetailPage() {
               ))}
             </div>
 
-            {isGenerating && (
-              <div className="rounded-2xl border border-border bg-card p-8 max-w-lg">
-                <ContentGenerating
-                  contentStatus={contentStatus}
-                  contentError={campaign.settings?.contentError as string | null ?? null}
-                />
+            {/* Metrics summary */}
+            {metrics && metrics.sent > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: 'Gönderilen', value: `${metrics.sent}`, sub: `/ ${metrics.total_leads}` },
+                  { label: 'Açılma Oranı', value: metrics.open_rate },
+                  { label: 'Tıklanma', value: metrics.click_rate },
+                  { label: 'Yanıt Oranı', value: metrics.reply_rate },
+                ].map(({ label, value, sub }) => (
+                  <div key={label} className="rounded-lg border border-border bg-card px-4 py-3 space-y-1">
+                    <p className="text-xs text-muted-foreground">{label}</p>
+                    <p className="text-lg font-bold">{value} <span className="text-xs font-normal text-muted-foreground">{sub}</span></p>
+                  </div>
+                ))}
               </div>
             )}
 
-            {additionalNotes && (
-              <div className="rounded-lg border border-border bg-card px-4 py-3 space-y-1">
-                <p className="text-xs text-muted-foreground">Ek Notlar</p>
-                <p className="text-sm">{additionalNotes}</p>
+            {isGenerating && (
+              <div className="rounded-2xl border border-border bg-card p-8 max-w-lg">
+                <ContentGenerating contentStatus={contentStatus} contentError={campaign.settings?.contentError as string | null ?? null} />
               </div>
             )}
           </div>
@@ -361,11 +295,8 @@ export default function CampaignDetailPage() {
             </div>
           ) : (
             <EmailSequenceEditor
-              campaignId={campaignId}
-              sequences={sequences}
-              onRegenerate={handleRegenerateStep}
-              regeneratingStep={regeneratingStep}
-              onRefresh={loadCampaign}
+              campaignId={campaignId} sequences={sequences as any}
+              onRegenerate={handleRegenerateStep} regeneratingStep={regeneratingStep} onRefresh={loadCampaign}
             />
           )
         )}
@@ -376,39 +307,62 @@ export default function CampaignDetailPage() {
               <ContentGenerating contentStatus={contentStatus} contentError={null} />
             </div>
           ) : (
-            <CallScriptEditor
-              campaignId={campaignId}
-              scripts={scripts}
-              scriptOnly={scriptOnly}
-              onRefresh={loadCampaign}
-            />
+            <CallScriptEditor campaignId={campaignId} scripts={scripts} scriptOnly={campaign.settings?.scriptOnly as boolean | undefined} onRefresh={loadCampaign} />
           )
         )}
 
         {activeTab === 'leads' && (
           <div className="flex flex-col items-center justify-center py-16 gap-3 rounded-xl border border-dashed border-border">
             <Users className="w-8 h-8 text-muted-foreground" />
-            <div className="text-center space-y-1">
-              <p className="text-sm font-medium">Lead atama — Faz 3</p>
-              <p className="text-sm text-muted-foreground">
-                Leads bu kampanyaya Faz 3&apos;te atanacak.
-              </p>
-            </div>
-            <Link href={`/projects/${projectId}/leads`} className="text-sm text-primary hover:underline">
-              Tüm leadleri gör →
-            </Link>
+            <p className="text-sm font-medium">Lead yönetimi</p>
+            <p className="text-sm text-muted-foreground">Lead\'leri kampanyaya eklemek için API\'yi kullanın: POST /campaigns/{'{id}'}/leads</p>
           </div>
         )}
 
-        {activeTab === 'performance' && (
+        {activeTab === 'performance' && metrics && (
+          <div className="space-y-6">
+            {/* A/B Comparison */}
+            <div className="rounded-xl border border-border bg-card p-5">
+              <h3 className="text-sm font-semibold mb-4">A/B Varyant Karşılaştırması</h3>
+              <div className="grid grid-cols-2 gap-4">
+                {(['A', 'B'] as const).map((variant) => {
+                  const v = metrics.by_variant[variant];
+                  return (
+                    <div key={variant} className="rounded-lg border border-border p-4 space-y-2">
+                      <p className="text-sm font-semibold">Varyant {variant}</p>
+                      <p className="text-2xl font-bold">{v.open_rate}</p>
+                      <p className="text-xs text-muted-foreground">açılma oranı · {v.sent} gönderim</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Full metrics grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: 'Gönderilen', value: metrics.sent },
+                { label: 'Açılan', value: metrics.opened },
+                { label: 'Tıklanan', value: metrics.clicked },
+                { label: 'Yanıt', value: metrics.replied },
+                { label: 'Açılma %', value: metrics.open_rate },
+                { label: 'Tıklanma %', value: metrics.click_rate },
+                { label: 'Yanıt %', value: metrics.reply_rate },
+                { label: 'Bounce %', value: metrics.bounce_rate },
+              ].map(({ label, value }) => (
+                <div key={label} className="rounded-lg border border-border bg-card px-4 py-3">
+                  <p className="text-xs text-muted-foreground">{label}</p>
+                  <p className="text-lg font-bold mt-0.5">{value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'performance' && !metrics && (
           <div className="flex flex-col items-center justify-center py-16 gap-3 rounded-xl border border-dashed border-border">
             <TrendingUp className="w-8 h-8 text-muted-foreground" />
-            <div className="text-center space-y-1">
-              <p className="text-sm font-medium">Performans metrikleri — Faz 5</p>
-              <p className="text-sm text-muted-foreground">
-                Open rate, reply rate ve dönüşüm istatistikleri Faz 5&apos;te burada görünecek.
-              </p>
-            </div>
+            <p className="text-sm text-muted-foreground">Henüz gönderim yapılmamış.</p>
           </div>
         )}
       </div>

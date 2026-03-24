@@ -8,6 +8,7 @@ import { QUEUE_NAMES } from '@autonomous-sales/shared';
   imports: [
     BullModule.registerQueue(
       { name: QUEUE_NAMES.GENERATE_CAMPAIGN_CONTENT },
+      { name: QUEUE_NAMES.SEND_OUTREACH },
     ),
   ],
   controllers: [CampaignsController],
