@@ -9,6 +9,7 @@ import { GenerateCampaignProcessor } from './processors/generate-campaign.proces
 import { SendOutreachProcessor } from './processors/send-outreach.processor';
 import { WarmupExecuteProcessor } from './processors/warmup-execute.processor';
 import { PhoneVerifyProcessor } from './processors/phone-verify.processor';
+import { ExecuteCallProcessor } from './processors/execute-call.processor';
 import { StrategyReviewProcessor } from './processors/strategy-review.processor';
 import { ComplianceCheckProcessor } from './processors/compliance-check.processor';
 import { InboxSyncProcessor, InboxSyncCronService } from './processors/inbox-sync.processor';
@@ -29,6 +30,9 @@ import { TrackingService } from './services/tracking.service';
 import { EmailSenderService } from './services/email-sender.service';
 import { BounceHandlerService } from './services/bounce-handler.service';
 import { InboxSyncService } from './services/inbox-sync.service';
+// ── Faz 4 ──────────────────────────────────────────────────────────────────
+import { PhoneVerifierService } from './services/phone-verifier.service';
+import { VapiCallService } from './services/vapi-call.service';
 
 @Controller('health')
 class HealthController {
@@ -58,6 +62,7 @@ class HealthController {
       { name: QUEUE_NAMES.STRATEGY_REVIEW },
       { name: QUEUE_NAMES.COMPLIANCE_CHECK },
       { name: 'inbox-sync' },
+      { name: 'execute-call' },
     ),
     DatabaseModule,
   ],
@@ -82,12 +87,16 @@ class HealthController {
     BounceHandlerService,
     InboxSyncService,
     InboxSyncCronService,
+    // ── Faz 4 ───────────────────────────────────────────────────────────────
+    PhoneVerifierService,
+    VapiCallService,
     // ── Processors ─────────────────────────────────────────────────────────
     AnalyzeUrlProcessor,
     GenerateCampaignProcessor,
     SendOutreachProcessor,
     WarmupExecuteProcessor,
     PhoneVerifyProcessor,
+    ExecuteCallProcessor,
     StrategyReviewProcessor,
     ComplianceCheckProcessor,
     InboxSyncProcessor,

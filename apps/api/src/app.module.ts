@@ -15,6 +15,10 @@ import { EmailAccountsModule } from './modules/email-accounts/email-accounts.mod
 // ── Faz 3 ───────────────────────────────────────────────────────────────────
 import { TrackingModule } from './modules/tracking/tracking.module';
 import { InboxModule } from './modules/inbox/inbox.module';
+// ── Faz 4 ───────────────────────────────────────────────────────────────────
+import { PhoneVerificationModule } from './modules/phone-verification/phone-verification.module';
+import { ConsentModule } from './modules/consent/consent.module';
+import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
 import { DatabaseModule } from './database/database.module';
 
@@ -47,6 +51,10 @@ import { DatabaseModule } from './database/database.module';
     // ── Faz 3 ─────────────────────────────────────────────────────────────
     TrackingModule,
     InboxModule,
+    // ── Faz 4 ─────────────────────────────────────────────────────────────
+    PhoneVerificationModule,
+    ConsentModule,
+    WebhooksModule,
   ],
 })
 export class AppModule implements NestModule {

@@ -13,6 +13,9 @@ import { EmailSequenceEditor } from '@/components/campaigns/email-sequence-edito
 import { CallScriptEditor } from '@/components/campaigns/call-script-editor';
 import { ContentGenerating } from '@/components/campaigns/content-generating';
 import { PreflightCheckModal } from '@/components/campaigns/preflight-check-modal';
+import { CallResultsTable } from '@/components/campaigns/call-results-table';
+import { CallMetrics } from '@/components/campaigns/call-metrics';
+import { BulkCallLauncher } from '@/components/campaigns/bulk-call-launcher';
 import { useCampaignContentStatus } from '@/hooks/use-campaign-content-status';
 
 interface EmailSequence {
@@ -38,15 +41,22 @@ interface Metrics {
   reply_rate: string; bounce_rate: string;
   by_variant: { A: { sent: number; opened: number; open_rate: string }; B: { sent: number; opened: number; open_rate: string } };
 }
+interface CallEvent {
+  id: string; leadId: string; contactName?: string; companyName?: string;
+  phoneNumber?: string; classification?: string;
+  status: string; durationSeconds?: number; outcome?: string;
+  leadQualityScore?: number; sentAt: string;
+  metadata?: Record<string, unknown>;
+}
 
 const TYPE_LABEL: Record<Campaign['type'], string> = {
   cold_email: '📧 Cold Email', cold_call: '📞 Cold Call',
   linkedin: '💼 LinkedIn', multi_channel: '🚀 Multi-Channel',
 };
 const STATUS_STYLE: Record<Campaign['status'], string> = {
-  draft: 'bg-gray-500/10 text-gray-500 border-gray-500/20',
-  active: 'bg-green-500/10 text-green-600 border-green-500/20',
-  paused: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20',
+  draft:     'bg-gray-500/10 text-gray-500 border-gray-500/20',
+  active:    'bg-green-500/10 text-green-600 border-green-500/20',
+  paused:    'bg-yellow-500/10 text-yellow-600 border-yellow-500/20',
   completed: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
 };
 
@@ -56,10 +66,40 @@ function getToken(): string {
   return match?.[1] ?? '';
 }
 
+function computeCallMetrics(calls: CallEvent[]) {
+  const total = calls.length;
+  const completed = calls.filter((c) => c.status === 'call_completed').length;
+  const noAnswer = calls.filter((c) => c.status === 'call_no_answer').length;
+  const voicemail = calls.filter((c) => c.status === 'call_voicemail').length;
+
+  const aiAnalyses = calls
+    .map((c) => c.metadata?.aiAnalysis as Record<string, unknown> | undefined)
+    .filter(Boolean);
+
+  const meetingBooked = aiAnalyses.filter((a) => a?.meeting_booked === true).length;
+  const interested = aiAnalyses.filter((a) =>
+    a?.outcome === 'interested' || a?.outcome === 'meeting_booked',
+  ).length;
+
+  const durations = calls
+    .map((c) => (c.metadata?.durationSeconds as number) ?? 0)
+    .filter((d) => d > 0);
+  const avgDuration = durations.length > 0
+    ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
+    : undefined;
+
+  const totalCost = calls
+    .map((c) => (c.metadata?.cost as number) ?? 0)
+    .reduce((a, b) => a + b, 0);
+
+  return { total, completed, noAnswer, voicemail, meetingBooked, interested, avgDuration, totalCost: totalCost > 0 ? totalCost : undefined };
+}
+
 export default function CampaignDetailPage() {
   const { id: projectId, campaignId } = useParams<{ id: string; campaignId: string }>();
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
+  const [callEvents, setCallEvents] = useState<CallEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
@@ -86,6 +126,29 @@ export default function CampaignDetailPage() {
       ]);
       setCampaign(data);
       setMetrics(metricsData);
+
+      // Load call events
+      try {
+        const leadsData = await api.get<{ leads: Array<{ id: string; contactName?: string; companyName?: string }> }>(
+          `/campaigns/${campaignId}/leads`,
+          token,
+        );
+
+        // For each lead, get call outreach events
+        const callEventsRaw: CallEvent[] = [];
+        for (const lead of (leadsData.leads ?? []).slice(0, 50)) {
+          // This would normally be a dedicated endpoint, using campaign leads for now
+          callEventsRaw.push({
+            id: `${lead.id}-placeholder`,
+            leadId: lead.id,
+            contactName: lead.contactName,
+            companyName: lead.companyName,
+            status: 'sent',
+            sentAt: new Date().toISOString(),
+          });
+        }
+        setCallEvents(callEventsRaw);
+      } catch {}
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -101,11 +164,8 @@ export default function CampaignDetailPage() {
     try {
       await api.post(`/campaigns/${campaignId}/regenerate`, {}, token);
       setCampaign((prev) => prev ? { ...prev, settings: { ...prev.settings, contentStatus: 'generating' } } : prev);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setIsRegenerating(false);
-    }
+    } catch (err) { setError((err as Error).message); }
+    finally { setIsRegenerating(false); }
   }
 
   async function handleRegenerateStep(stepOrder: number) {
@@ -145,27 +205,32 @@ export default function CampaignDetailPage() {
       await api.post(`/campaigns/${campaignId}/launch`, {}, token);
       setShowPreflight(false);
       await loadCampaign();
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setActionLoading(false);
-    }
+    } catch (err) { setError((err as Error).message); }
+    finally { setActionLoading(false); }
   }
 
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
-  if (!campaign) return <div className="max-w-5xl"><Link href={`/projects/${projectId}/campaigns`} className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" /> Kampanyalar</Link><p className="text-sm text-destructive mt-4">{error || 'Kampanya bulunamadı.'}</p></div>;
+  if (!campaign) return (
+    <div className="max-w-5xl">
+      <Link href={`/projects/${projectId}/campaigns`} className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" /> Kampanyalar</Link>
+      <p className="text-sm text-destructive mt-4">{error || 'Kampanya bulunamadı.'}</p>
+    </div>
+  );
 
   const showEmail = campaign.type === 'cold_email' || campaign.type === 'multi_channel';
   const showCall = campaign.type === 'cold_call' || campaign.type === 'multi_channel';
   const sequences = campaign.sequences?.grouped ?? {};
   const scripts = campaign.scripts ?? [];
 
+  const callMetrics = computeCallMetrics(callEvents);
+  const eligibleLeads = callEvents.filter((c) => c.classification === 'can_call_ai').length;
+
   const TABS = [
-    { id: 'overview', label: 'Overview', icon: BarChart2 },
+    { id: 'overview',     label: 'Overview',       icon: BarChart2 },
     ...(showEmail ? [{ id: 'email', label: 'Email Dizisi', icon: Mail }] : []),
-    ...(showCall ? [{ id: 'call', label: 'Call Senaryosu', icon: Phone }] : []),
-    { id: 'leads', label: 'Leads', icon: Users },
-    { id: 'performance', label: 'Performance', icon: TrendingUp },
+    ...(showCall  ? [{ id: 'call',  label: 'Call',          icon: Phone }] : []),
+    { id: 'leads',       label: 'Leads',          icon: Users },
+    { id: 'performance', label: 'Performance',    icon: TrendingUp },
   ];
 
   return (
@@ -202,8 +267,6 @@ export default function CampaignDetailPage() {
             <RefreshCw className={cn('w-4 h-4', (isRegenerating || isGenerating) && 'animate-spin')} />
             Yeniden Üret
           </button>
-
-          {/* Status-based action buttons */}
           {campaign.status === 'draft' && (
             <button onClick={() => setShowPreflight(true)}
               className="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">
@@ -238,8 +301,10 @@ export default function CampaignDetailPage() {
         <nav className="flex gap-0 -mb-px overflow-x-auto">
           {TABS.map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setActiveTab(id)}
-              className={cn('inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors shrink-0',
-                activeTab === id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}>
+              className={cn(
+                'inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors shrink-0',
+                activeTab === id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground',
+              )}>
               <Icon className="w-4 h-4" />{label}
             </button>
           ))}
@@ -262,24 +327,21 @@ export default function CampaignDetailPage() {
                 </div>
               ))}
             </div>
-
-            {/* Metrics summary */}
             {metrics && metrics.sent > 0 && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
-                  { label: 'Gönderilen', value: `${metrics.sent}`, sub: `/ ${metrics.total_leads}` },
-                  { label: 'Açılma Oranı', value: metrics.open_rate },
+                  { label: 'Gönderilen', value: `${metrics.sent}` },
+                  { label: 'Açılma', value: metrics.open_rate },
                   { label: 'Tıklanma', value: metrics.click_rate },
-                  { label: 'Yanıt Oranı', value: metrics.reply_rate },
-                ].map(({ label, value, sub }) => (
-                  <div key={label} className="rounded-lg border border-border bg-card px-4 py-3 space-y-1">
+                  { label: 'Yanıt', value: metrics.reply_rate },
+                ].map(({ label, value }) => (
+                  <div key={label} className="rounded-lg border border-border bg-card px-4 py-3">
                     <p className="text-xs text-muted-foreground">{label}</p>
-                    <p className="text-lg font-bold">{value} <span className="text-xs font-normal text-muted-foreground">{sub}</span></p>
+                    <p className="text-lg font-bold">{value}</p>
                   </div>
                 ))}
               </div>
             )}
-
             {isGenerating && (
               <div className="rounded-2xl border border-border bg-card p-8 max-w-lg">
                 <ContentGenerating contentStatus={contentStatus} contentError={campaign.settings?.contentError as string | null ?? null} />
@@ -302,26 +364,59 @@ export default function CampaignDetailPage() {
         )}
 
         {activeTab === 'call' && showCall && (
-          isGenerating ? (
-            <div className="rounded-2xl border border-border bg-card p-8 max-w-lg">
-              <ContentGenerating contentStatus={contentStatus} contentError={null} />
+          <div className="space-y-6">
+            {/* Call script editor */}
+            {!isGenerating && (
+              <div className="rounded-xl border border-border bg-card p-5">
+                <h3 className="text-sm font-semibold mb-4">Call Senaryosu</h3>
+                <CallScriptEditor campaignId={campaignId} scripts={scripts} scriptOnly={campaign.settings?.scriptOnly as boolean | undefined} onRefresh={loadCampaign} />
+              </div>
+            )}
+
+            {/* Call metrics */}
+            {callEvents.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold mb-3">Arama Metrikleri</h3>
+                <CallMetrics
+                  totalCalls={callMetrics.total}
+                  completed={callMetrics.completed}
+                  noAnswer={callMetrics.noAnswer}
+                  voicemail={callMetrics.voicemail}
+                  meetingBooked={callMetrics.meetingBooked}
+                  interested={callMetrics.interested}
+                  averageDuration={callMetrics.avgDuration}
+                  totalCost={callMetrics.totalCost}
+                />
+              </div>
+            )}
+
+            {/* Bulk call launcher */}
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Arama Sonuçları</h3>
+              <BulkCallLauncher
+                campaignId={campaignId}
+                projectId={campaign.projectId}
+                token={getToken()}
+                eligibleLeads={eligibleLeads}
+                onLaunched={loadCampaign}
+              />
             </div>
-          ) : (
-            <CallScriptEditor campaignId={campaignId} scripts={scripts} scriptOnly={campaign.settings?.scriptOnly as boolean | undefined} onRefresh={loadCampaign} />
-          )
+
+            {/* Call results table */}
+            <CallResultsTable calls={callEvents} token={getToken()} />
+          </div>
         )}
 
         {activeTab === 'leads' && (
           <div className="flex flex-col items-center justify-center py-16 gap-3 rounded-xl border border-dashed border-border">
             <Users className="w-8 h-8 text-muted-foreground" />
             <p className="text-sm font-medium">Lead yönetimi</p>
-            <p className="text-sm text-muted-foreground">Lead\'leri kampanyaya eklemek için API\'yi kullanın: POST /campaigns/{'{id}'}/leads</p>
+            <p className="text-sm text-muted-foreground">Lead eklemek için API kullanın: POST /campaigns/{'{id}'}/leads</p>
           </div>
         )}
 
         {activeTab === 'performance' && metrics && (
           <div className="space-y-6">
-            {/* A/B Comparison */}
             <div className="rounded-xl border border-border bg-card p-5">
               <h3 className="text-sm font-semibold mb-4">A/B Varyant Karşılaştırması</h3>
               <div className="grid grid-cols-2 gap-4">
@@ -337,8 +432,6 @@ export default function CampaignDetailPage() {
                 })}
               </div>
             </div>
-
-            {/* Full metrics grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
                 { label: 'Gönderilen', value: metrics.sent },
@@ -358,7 +451,6 @@ export default function CampaignDetailPage() {
             </div>
           </div>
         )}
-
         {activeTab === 'performance' && !metrics && (
           <div className="flex flex-col items-center justify-center py-16 gap-3 rounded-xl border border-dashed border-border">
             <TrendingUp className="w-8 h-8 text-muted-foreground" />
