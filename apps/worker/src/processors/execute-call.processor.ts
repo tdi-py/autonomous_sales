@@ -6,6 +6,7 @@ import { eq, and } from 'drizzle-orm';
 import * as schema from '@autonomous-sales/database';
 import { DATABASE_TOKEN, logExecution } from '../database/database.module';
 import { VapiCallService } from '../services/vapi-call.service';
+import { ComplianceEngineService } from '../services/compliance-engine.service';
 
 export interface ExecuteCallJobPayload {
   leadId: string;
@@ -20,6 +21,7 @@ export class ExecuteCallProcessor {
   constructor(
     @Inject(DATABASE_TOKEN) private readonly db: any,
     private readonly vapiCallService: VapiCallService,
+    private readonly complianceEngine: ComplianceEngineService,
   ) {}
 
   @Process()
@@ -40,23 +42,69 @@ export class ExecuteCallProcessor {
         return { skipped: true, reason: 'no_phone_verification' };
       }
 
-      // HARD BLOCK: cannot_call leads are never called
       if (verification.aiCallClassification === 'cannot_call') {
         this.logger.log(`[execute-call] Lead ${leadId} is CANNOT_CALL — blocked at code level`);
         return { skipped: true, reason: 'cannot_call_classification' };
       }
 
-      // ── Step 2: Compliance check (timezone + state rules) ─────────────────
+      // ── Step 2: COMPLIANCE CHECK ──────────────────────────────────────────
+      // Create a placeholder outreach event for compliance logging
+      const [tempEvent] = await this.db
+        .insert(schema.outreachEvents)
+        .values({
+          leadId,
+          campaignId,
+          channel: 'call',
+          status: 'sent',
+          sentAt: new Date(),
+          metadata: {
+            callType: 'ai_voice',
+            complianceCheck: 'pending',
+          },
+        })
+        .returning() as schema.OutreachEvent[];
+
+      const complianceResult = await this.complianceEngine.runComplianceCheck({
+        leadId,
+        campaignId,
+        projectId,
+        outreachEventId: tempEvent.id,
+        channel: 'call',
+        callType: 'ai_voice',
+      });
+
+      if (!complianceResult.approved) {
+        this.logger.warn(
+          `[execute-call] Compliance blocked lead ${leadId}: ${complianceResult.blockers.join(', ')}`,
+        );
+        await this.db
+          .update(schema.outreachEvents)
+          .set({
+            status: 'failed',
+            metadata: {
+              ...(tempEvent.metadata as Record<string, unknown>),
+              blockedBy: 'compliance',
+              complianceResult: complianceResult.overallResult,
+              complianceBlockers: complianceResult.blockers,
+            },
+          })
+          .where(eq(schema.outreachEvents.id, tempEvent.id));
+
+        return { skipped: true, reason: 'compliance_blocked', blockers: complianceResult.blockers };
+      }
+      // ─────────────────────────────────────────────────────────────────────
+
+      // ── Step 3: Calling hours check ───────────────────────────────────────
       const timeCheck = this.vapiCallService.isCallTimeAllowed(verification.stateCode);
       if (!timeCheck.allowed) {
         this.logger.log(
           `[execute-call] Call time not allowed for lead ${leadId}: ${timeCheck.reason}`,
         );
-        // Re-queue for next allowed time
+        await this.db.delete(schema.outreachEvents).where(eq(schema.outreachEvents.id, tempEvent.id));
         return { skipped: true, reason: 'calling_hours_restriction', nextAllowedAt: timeCheck.nextAllowedAt };
       }
 
-      // Daily call limit check
+      // ── Step 4: Daily call limit ──────────────────────────────────────────
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
@@ -68,18 +116,17 @@ export class ExecuteCallProcessor {
       }) as schema.OutreachEvent[];
 
       const stateRule = this.vapiCallService.getStateRule(verification.stateCode ?? 'US');
-      const callsTodayCount = callsToday.filter((e) => {
-        return new Date(e.sentAt) >= today;
-      }).length;
+      const callsTodayCount = callsToday.filter((e) => new Date(e.sentAt) >= today).length;
 
       if (callsTodayCount >= stateRule.maxCallsPerDay) {
         this.logger.log(
           `[execute-call] Daily call limit reached for lead ${leadId} (${callsTodayCount}/${stateRule.maxCallsPerDay})`,
         );
+        await this.db.delete(schema.outreachEvents).where(eq(schema.outreachEvents.id, tempEvent.id));
         return { skipped: true, reason: 'daily_call_limit_reached' };
       }
 
-      // ── Step 3: Consent verification (mobile = requires AI consent) ───────
+      // ── Step 5: Consent for mobile AI calls ───────────────────────────────
       if (verification.numberType === 'mobile' || verification.aiCallClassification !== 'can_call_ai') {
         const consentRecord = await this.db.query.callConsentRecords.findFirst({
           where: and(
@@ -94,11 +141,12 @@ export class ExecuteCallProcessor {
           this.logger.log(
             `[execute-call] Mobile/non-AI lead ${leadId} without consent — marking script-only`,
           );
+          await this.db.delete(schema.outreachEvents).where(eq(schema.outreachEvents.id, tempEvent.id));
           return { skipped: true, reason: 'no_ai_consent_for_mobile', scriptOnly: true };
         }
       }
 
-      // ── Step 4: Load required entities ────────────────────────────────────
+      // ── Step 6: Load required entities ────────────────────────────────────
       const [lead, campaign, callScript, projectAnalysis] = await Promise.all([
         this.db.query.leads.findFirst({ where: eq(schema.leads.id, leadId) }),
         this.db.query.campaigns.findFirst({ where: eq(schema.campaigns.id, campaignId) }),
@@ -120,34 +168,31 @@ export class ExecuteCallProcessor {
         this.logger.warn(
           `[execute-call] Missing entities — lead: ${!!lead}, campaign: ${!!campaign}, script: ${!!callScript}`,
         );
+        await this.db.delete(schema.outreachEvents).where(eq(schema.outreachEvents.id, tempEvent.id));
         return { skipped: true, reason: 'missing_required_entities' };
       }
 
       if (!lead.contactPhone) {
         this.logger.warn(`[execute-call] Lead ${leadId} has no phone number`);
+        await this.db.delete(schema.outreachEvents).where(eq(schema.outreachEvents.id, tempEvent.id));
         return { skipped: true, reason: 'no_phone_number' };
       }
 
-      // ── Step 5: Create outreach event ─────────────────────────────────────
-      const [outreachEvent] = await this.db
-        .insert(schema.outreachEvents)
-        .values({
-          leadId,
-          campaignId,
-          channel: 'call',
+      // Update temp event with script info
+      await this.db
+        .update(schema.outreachEvents)
+        .set({
           callScriptId: callScript.id,
-          status: 'sent',
-          sentAt: new Date(),
           metadata: {
             callType: 'ai_voice',
-            phoneNumber: `****${lead.contactPhone.slice(-4)}`, // masked
+            phoneNumber: `****${lead.contactPhone.slice(-4)}`,
             scriptVersion: callScript.version,
             classification: verification.aiCallClassification,
           },
         })
-        .returning() as schema.OutreachEvent[];
+        .where(eq(schema.outreachEvents.id, tempEvent.id));
 
-      // ── Step 6: Initiate Vapi call ────────────────────────────────────────
+      // ── Step 7: Initiate Vapi call ────────────────────────────────────────
       const callResult = await this.vapiCallService.initiateCall({
         leadId,
         campaignId,
@@ -165,23 +210,21 @@ export class ExecuteCallProcessor {
 
       if (!callResult.success) {
         if (callResult.scriptOnly) {
-          // Update event to script-only mode
           await this.db
             .update(schema.outreachEvents)
             .set({
               status: 'failed',
               metadata: {
-                ...(outreachEvent.metadata as Record<string, unknown>),
+                ...(tempEvent.metadata as Record<string, unknown>),
                 scriptOnly: true,
                 reason: 'vapi_not_configured',
               },
             })
-            .where(eq(schema.outreachEvents.id, outreachEvent.id));
+            .where(eq(schema.outreachEvents.id, tempEvent.id));
 
           return { success: false, scriptOnly: true, reason: 'vapi_not_configured' };
         }
 
-        // Retry-able failure
         throw new Error(`Vapi call failed: ${callResult.error}`);
       }
 
@@ -190,11 +233,11 @@ export class ExecuteCallProcessor {
         .update(schema.outreachEvents)
         .set({
           metadata: {
-            ...(outreachEvent.metadata as Record<string, unknown>),
+            ...(tempEvent.metadata as Record<string, unknown>),
             vapiCallId: callResult.callId,
           },
         })
-        .where(eq(schema.outreachEvents.id, outreachEvent.id));
+        .where(eq(schema.outreachEvents.id, tempEvent.id));
 
       // Update lead status
       if (lead.status === 'new') {
@@ -203,9 +246,6 @@ export class ExecuteCallProcessor {
           .set({ status: 'contacted', updatedAt: new Date() })
           .where(eq(schema.leads.id, leadId));
       }
-
-      // ── Step 7: Random delay before next call (60–180s) ───────────────────
-      // (handled by the batch caller — not here)
 
       this.logger.log(
         `[execute-call] ✅ Call initiated — vapiCallId: ${callResult.callId}, lead: ${leadId}`,
@@ -220,7 +260,7 @@ export class ExecuteCallProcessor {
         outputPayload: {
           vapiCallId: callResult.callId,
           classification: verification.aiCallClassification,
-          outreachEventId: outreachEvent.id,
+          outreachEventId: tempEvent.id,
         },
         status: 'success',
         durationMs: Date.now() - startTime,
@@ -229,7 +269,7 @@ export class ExecuteCallProcessor {
       return {
         success: true,
         vapiCallId: callResult.callId,
-        outreachEventId: outreachEvent.id,
+        outreachEventId: tempEvent.id,
       };
     } catch (error) {
       const err = error as Error;
@@ -246,7 +286,7 @@ export class ExecuteCallProcessor {
         durationMs: Date.now() - startTime,
       });
 
-      throw error; // BullMQ will retry (max 2 attempts configured in worker.module)
+      throw error;
     }
   }
 }

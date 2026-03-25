@@ -13,6 +13,11 @@ import { ExecuteCallProcessor } from './processors/execute-call.processor';
 import { StrategyReviewProcessor } from './processors/strategy-review.processor';
 import { ComplianceCheckProcessor } from './processors/compliance-check.processor';
 import { InboxSyncProcessor, InboxSyncCronService } from './processors/inbox-sync.processor';
+// ── Faz 6 ──────────────────────────────────────────────────────────────────
+import {
+  AbuseDetectionProcessor,
+  AbuseDetectionCronService,
+} from './processors/abuse-detection.processor';
 
 import { DatabaseModule } from './database/database.module';
 import { ScraperService } from './services/scraper.service';
@@ -33,9 +38,9 @@ import { InboxSyncService } from './services/inbox-sync.service';
 // ── Faz 4 ──────────────────────────────────────────────────────────────────
 import { PhoneVerifierService } from './services/phone-verifier.service';
 import { VapiCallService } from './services/vapi-call.service';
-// ── Faz 5 ──────────────────────────────────────────────────────────────────
-import { AnalyticsService } from './services/analytics.service';
-import { StrategistService } from './services/strategist.service';
+// ── Faz 6 ──────────────────────────────────────────────────────────────────
+import { ComplianceEngineService } from './services/compliance-engine.service';
+import { AbuseDetectorService } from './services/abuse-detector.service';
 
 @Controller('health')
 class HealthController {
@@ -66,6 +71,8 @@ class HealthController {
       { name: QUEUE_NAMES.COMPLIANCE_CHECK },
       { name: 'inbox-sync' },
       { name: 'execute-call' },
+      // ── Faz 6 ────────────────────────────────────────────────────────────
+      { name: 'abuse-detection' },
     ),
     DatabaseModule,
   ],
@@ -93,9 +100,10 @@ class HealthController {
     // ── Faz 4 ───────────────────────────────────────────────────────────────
     PhoneVerifierService,
     VapiCallService,
-    // ── Faz 5 ───────────────────────────────────────────────────────────────
-    AnalyticsService,
-    StrategistService,
+    // ── Faz 6 ───────────────────────────────────────────────────────────────
+    ComplianceEngineService,
+    AbuseDetectorService,
+    AbuseDetectionCronService,
     // ── Processors ─────────────────────────────────────────────────────────
     AnalyzeUrlProcessor,
     GenerateCampaignProcessor,
@@ -106,6 +114,7 @@ class HealthController {
     StrategyReviewProcessor,
     ComplianceCheckProcessor,
     InboxSyncProcessor,
+    AbuseDetectionProcessor,
   ],
 })
 export class WorkerModule {}

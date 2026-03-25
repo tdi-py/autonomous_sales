@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import * as schema from '@autonomous-sales/database';
 import { QUEUE_NAMES, type ComplianceCheckJobPayload } from '@autonomous-sales/shared';
 import { DATABASE_TOKEN, logExecution } from '../database/database.module';
+import { ComplianceEngineService } from '../services/compliance-engine.service';
 
 @Processor(QUEUE_NAMES.COMPLIANCE_CHECK)
 export class ComplianceCheckProcessor {
@@ -13,6 +14,7 @@ export class ComplianceCheckProcessor {
 
   constructor(
     @Inject(DATABASE_TOKEN) private readonly db: any,
+    private readonly complianceEngine: ComplianceEngineService,
   ) {}
 
   @Process()
@@ -21,38 +23,57 @@ export class ComplianceCheckProcessor {
     const { projectId, outreachEventId, leadId, channel, targetCountry, targetState } = job.data;
 
     this.logger.log(
-      `[compliance-check] Starting job ${job.id} — event: ${outreachEventId}, channel: ${channel}, country: ${targetCountry}`,
+      `[compliance-check] Job ${job.id} — event: ${outreachEventId}, channel: ${channel}, country: ${targetCountry}`,
     );
 
     try {
-      // ─────────────────────────────────────────────────────────────────────
-      // FAZ 6'DA BURAYA EKLENECEKLER (EMAIL):
-      //   1. compliance_rules'dan ülke/eyalet kurallarını çek
-      //   2. Suppression list kontrolü
-      //   3. CAN-SPAM zorunlulukları: fiziksel adres var mı? unsubscribe linki var mı?
-      //   4. GDPR: hedef AB ülkesiyse legitimate interest dokümantasyonu var mı?
-      //   5. CASL: hedef CA ise consent kaydı var mı?
-      //
-      // FAZ 6'DA BURAYA EKLENECEKLER (CALL):
-      //   1. phone_verification tablosundan sınıflandırmayı oku
-      //   2. call_consent_records tablosundan consent durumunu kontrol et
-      //   3. Arama saati kuralları (Florida: 8-20, max 3/gün)
-      //   4. California iki taraflı kayıt rızası kontrolü
-      //   5. DNC listesi son kontrol
-      //
-      // ÖNEMLİ: Bu processor retry OLMADAN çalışır.
-      // Başarısız olursa outreach_events.status = 'failed' olarak işaretlenir.
-      // ─────────────────────────────────────────────────────────────────────
+      // Load outreach event to get email content if needed
+      const outreachEvent = await this.db.query.outreachEvents.findFirst({
+        where: eq(schema.outreachEvents.id, outreachEventId),
+      }) as schema.OutreachEvent | null;
 
-      // Placeholder: varsayılan olarak 'pass' döndür
-      await this.db.insert(schema.complianceChecks).values({
+      // Extract email content from metadata if available
+      let emailContent: { subject: string; body: string } | undefined;
+      if (channel === 'email' && outreachEvent) {
+        const meta = (outreachEvent.metadata ?? {}) as Record<string, unknown>;
+        if (meta.subject) {
+          emailContent = {
+            subject: String(meta.subject),
+            body: String(meta.bodyPreview ?? ''),
+          };
+        }
+      }
+
+      // Run compliance check
+      const result = await this.complianceEngine.runComplianceCheck({
+        leadId,
+        campaignId: outreachEvent?.campaignId ?? '',
+        projectId,
         outreachEventId,
-        checksPassed: ['placeholder_check'],
-        overallResult: 'pass',
-        blockedReason: null,
+        channel: channel as 'email' | 'call',
+        emailContent,
       });
 
-      this.logger.log(`[compliance-check] Job ${job.id} completed — result: pass (placeholder)`);
+      const resultLabel = result.approved ? 'pass' : 'fail';
+      this.logger.log(
+        `[compliance-check] Job ${job.id} — result: ${result.overallResult}, blockers: ${result.blockers.length}`,
+      );
+
+      // If blocked, update outreach event status
+      if (!result.approved && outreachEvent) {
+        await this.db
+          .update(schema.outreachEvents)
+          .set({
+            status: 'failed',
+            metadata: {
+              ...(outreachEvent.metadata as Record<string, unknown>),
+              blockedBy: 'compliance',
+              complianceResult: result.overallResult,
+              complianceBlockers: result.blockers,
+            },
+          })
+          .where(eq(schema.outreachEvents.id, outreachEventId));
+      }
 
       await logExecution({
         db: this.db as Parameters<typeof logExecution>[0]['db'],
@@ -60,21 +81,35 @@ export class ComplianceCheckProcessor {
         agentType: 'analyzer',
         trigger: QUEUE_NAMES.COMPLIANCE_CHECK,
         inputPayload: job.data,
-        outputPayload: { result: 'pass', status: 'placeholder' },
+        outputPayload: {
+          result: resultLabel,
+          overallResult: result.overallResult,
+          blockers: result.blockers,
+          warnings: result.warnings,
+          checksCount: result.checks.length,
+        },
         status: 'success',
         durationMs: Date.now() - startTime,
       });
 
-      return { result: 'pass' };
+      return {
+        result: resultLabel,
+        approved: result.approved,
+        blockers: result.blockers,
+        warnings: result.warnings,
+      };
     } catch (error) {
       const err = error as Error;
       this.logger.error(`[compliance-check] Job ${job.id} failed: ${err.message}`);
 
-      // Compliance başarısız → outreach event'i 'failed' olarak işaretle
+      // On error, update outreach event to failed
       try {
         await this.db
           .update(schema.outreachEvents)
-          .set({ status: 'failed', metadata: { complianceError: err.message } })
+          .set({
+            status: 'failed',
+            metadata: { complianceError: err.message },
+          })
           .where(eq(schema.outreachEvents.id, outreachEventId));
       } catch {
         // ignore secondary failure
@@ -91,8 +126,7 @@ export class ComplianceCheckProcessor {
         durationMs: Date.now() - startTime,
       });
 
-      // COMPLIANCE_CHECK kuyruğunda retry YOK — throw etmeyiz, sadece loglarız
-      // Böylece BullMQ failed job olarak işaretler ama retry denemez
+      // COMPLIANCE_CHECK — no retry, just log
     }
   }
 }

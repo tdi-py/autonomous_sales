@@ -9,7 +9,7 @@ import {
   Settings,
   Zap,
   Inbox,
-  Brain,
+  Shield,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
@@ -29,7 +29,6 @@ const navItems = [
 export function Sidebar() {
   const pathname = usePathname();
   const [inboxCount, setInboxCount] = useState(0);
-  const [pendingDecisions, setPendingDecisions] = useState(0);
 
   // Extract projectId from path if inside a project
   const projectMatch = pathname.match(/\/projects\/([^/]+)/);
@@ -38,16 +37,11 @@ export function Sidebar() {
   useEffect(() => {
     if (!currentProjectId) return;
     const token = getToken();
-
     api.get<{ count: number }>(`/inbox?projectId=${currentProjectId}&filter=requires_action`, token)
       .then((data) => {
         const arr = data as unknown as unknown[];
         setInboxCount(Array.isArray(arr) ? arr.length : 0);
       })
-      .catch(() => {});
-
-    api.get<{ pendingDecisions: number }>(`/projects/${currentProjectId}/strategy/overview`, token)
-      .then((data) => setPendingDecisions(data.pendingDecisions ?? 0))
       .catch(() => {});
   }, [currentProjectId, pathname]);
 
@@ -85,7 +79,7 @@ export function Sidebar() {
           );
         })}
 
-        {/* Project-level links */}
+        {/* Project-level links — shown when inside a project */}
         {currentProjectId && (
           <>
             <Link
@@ -106,22 +100,18 @@ export function Sidebar() {
               )}
             </Link>
 
+            {/* ── Faz 6: Compliance link ──────────────────────────────────── */}
             <Link
-              href={`/projects/${currentProjectId}/strategy`}
+              href={`/projects/${currentProjectId}/compliance`}
               className={cn(
                 'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
-                pathname.includes('/strategy')
+                pathname.includes('/compliance')
                   ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                   : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
               )}
             >
-              <Brain className="w-4 h-4 shrink-0" />
-              <span className="flex-1">Strategy</span>
-              {pendingDecisions > 0 && (
-                <span className="ml-auto flex items-center justify-center w-5 h-5 rounded-full bg-orange-500 text-white text-xs font-semibold">
-                  {pendingDecisions > 9 ? '9+' : pendingDecisions}
-                </span>
-              )}
+              <Shield className="w-4 h-4 shrink-0" />
+              <span className="flex-1">Compliance</span>
             </Link>
           </>
         )}
@@ -130,7 +120,7 @@ export function Sidebar() {
       {/* Bottom hint */}
       <div className="px-5 py-4 border-t border-sidebar-border">
         <p className="text-xs text-sidebar-foreground/40">
-          Faz 5 — Strategist Agent
+          Faz 6 — Compliance Engine
         </p>
       </div>
     </aside>

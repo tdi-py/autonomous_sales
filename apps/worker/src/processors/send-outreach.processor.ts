@@ -11,6 +11,7 @@ import { DATABASE_TOKEN, logExecution } from '../database/database.module';
 import { EmailSenderService } from '../services/email-sender.service';
 import { BounceHandlerService } from '../services/bounce-handler.service';
 import { VapiCallService } from '../services/vapi-call.service';
+import { ComplianceEngineService } from '../services/compliance-engine.service';
 
 // ─── Multi-channel sequence step type ────────────────────────────────────────
 
@@ -31,6 +32,7 @@ export class SendOutreachProcessor {
     private readonly emailSenderService: EmailSenderService,
     private readonly bounceHandlerService: BounceHandlerService,
     private readonly vapiCallService: VapiCallService,
+    private readonly complianceEngine: ComplianceEngineService,
   ) {}
 
   // ─── Campaign Batch Job ───────────────────────────────────────────────────
@@ -59,13 +61,11 @@ export class SendOutreachProcessor {
       return;
     }
 
-    // Multi-channel: determine sequence from campaign settings
     if (isMultiChannel) {
       await this.processMultiChannelBatch(campaignId, projectId, leadIds, campaign, settings);
       return;
     }
 
-    // Single-channel email (existing behavior)
     await this.processEmailBatch(campaignId, projectId, leadIds, campaign, settings);
   }
 
@@ -84,7 +84,6 @@ export class SendOutreachProcessor {
 
     for (const leadId of leadIds.slice(0, BATCH_SIZE)) {
       try {
-        // Determine next step for this lead
         const nextStep = await this.getNextMultiChannelStep(leadId, campaignId, sequence);
 
         if (!nextStep) {
@@ -132,10 +131,6 @@ export class SendOutreachProcessor {
     const emailStepsDone = previousEvents.filter((e) => e.channel === 'email').length;
     const callStepsDone = previousEvents.filter((e) => e.channel === 'call').length;
 
-    const emailSequence = sequence.filter((s) => s.channel === 'email');
-    const callSequence = sequence.filter((s) => s.channel === 'call');
-
-    // Find next step in overall sequence by day order
     const sortedSequence = [...sequence].sort((a, b) => a.day - b.day);
 
     let emailIdx = 0;
@@ -144,20 +139,17 @@ export class SendOutreachProcessor {
     for (const step of sortedSequence) {
       if (step.channel === 'email') {
         if (emailIdx >= emailStepsDone) {
-          // Check delay
           const lastEvent = previousEvents[previousEvents.length - 1];
           if (!lastEvent || step.day === 0) return step;
-
           const daysSinceLastSend = (Date.now() - new Date(lastEvent.sentAt).getTime()) / (1000 * 60 * 60 * 24);
           if (daysSinceLastSend >= step.day) return step;
-          return null; // Not ready yet
+          return null;
         }
         emailIdx++;
       } else if (step.channel === 'call') {
         if (callIdx >= callStepsDone) {
           const lastEvent = previousEvents[previousEvents.length - 1];
           if (!lastEvent) return step;
-
           const daysSinceLastSend = (Date.now() - new Date(lastEvent.sentAt).getTime()) / (1000 * 60 * 60 * 24);
           if (daysSinceLastSend >= step.day) return step;
           return null;
@@ -246,13 +238,12 @@ export class SendOutreachProcessor {
   // ─── Process single lead call ─────────────────────────────────────────────
 
   private async processLeadCall(leadId: string, campaignId: string, projectId: string) {
-    // Check phone verification
     const verification = await this.db.query.phoneVerification.findFirst({
       where: eq(schema.phoneVerification.leadId, leadId),
     }) as schema.PhoneVerification | null;
 
     if (!verification) {
-      this.logger.log(`[send-outreach] Lead ${leadId} — no phone verification, marking script-only`);
+      this.logger.log(`[send-outreach] Lead ${leadId} — no phone verification, skipping call step`);
       return;
     }
 
@@ -266,13 +257,12 @@ export class SendOutreachProcessor {
       return;
     }
 
-    // Queue the actual call
     await this.executeCallQueue.add(
       { leadId, campaignId, projectId },
       {
         attempts: 2,
         backoff: { type: 'fixed', delay: 60_000 },
-        delay: Math.floor(Math.random() * 60_000) + 60_000, // 1-2 min random delay
+        delay: Math.floor(Math.random() * 60_000) + 60_000,
       },
     );
 
@@ -349,6 +339,16 @@ export class SendOutreachProcessor {
 
     if (!sequence) return;
 
+    // ── Step 3: COMPLIANCE CHECK ────────────────────────────────────────────
+    const personalizedSubject = sequence.subjectTemplate
+      .replace(/\{\{first_name\}\}/g, lead.contactName?.split(' ')[0] ?? 'there')
+      .replace(/\{\{company_name\}\}/g, lead.companyName ?? '');
+
+    const personalizedBody = sequence.bodyTemplate
+      .replace(/\{\{first_name\}\}/g, lead.contactName?.split(' ')[0] ?? 'there')
+      .replace(/\{\{company_name\}\}/g, lead.companyName ?? '');
+
+    // Create a placeholder outreach event ID for compliance check
     const [outreachEvent] = await this.db
       .insert(schema.outreachEvents)
       .values({
@@ -363,9 +363,38 @@ export class SendOutreachProcessor {
           variant,
           emailAccountId: emailAccount.id,
           subject: sequence.subjectTemplate.slice(0, 100),
+          bodyPreview: personalizedBody.slice(0, 200),
         },
       })
       .returning() as schema.OutreachEvent[];
+
+    const complianceResult = await this.complianceEngine.runComplianceCheck({
+      leadId: lead.id,
+      campaignId: campaign.id,
+      projectId,
+      outreachEventId: outreachEvent.id,
+      channel: 'email',
+      emailContent: { subject: personalizedSubject, body: personalizedBody },
+    });
+
+    if (!complianceResult.approved) {
+      this.logger.warn(
+        `[send-outreach] Compliance blocked lead ${leadId}: ${complianceResult.blockers.join(', ')}`,
+      );
+      await this.db
+        .update(schema.outreachEvents)
+        .set({
+          status: 'failed',
+          metadata: {
+            ...(outreachEvent.metadata as Record<string, unknown>),
+            blockedBy: 'compliance',
+            reasons: complianceResult.blockers,
+          },
+        })
+        .where(eq(schema.outreachEvents.id, outreachEvent.id));
+      return;
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     const campaignSettings = (campaign.settings ?? {}) as Record<string, unknown>;
     const result = await this.emailSenderService.sendOutreachEmail({
@@ -390,7 +419,13 @@ export class SendOutreachProcessor {
       } else {
         await this.db
           .update(schema.outreachEvents)
-          .set({ status: 'failed', metadata: { ...(outreachEvent.metadata as Record<string, unknown>), error: result.error } })
+          .set({
+            status: 'failed',
+            metadata: {
+              ...(outreachEvent.metadata as Record<string, unknown>),
+              error: result.error,
+            },
+          })
           .where(eq(schema.outreachEvents.id, outreachEvent.id));
       }
     }
