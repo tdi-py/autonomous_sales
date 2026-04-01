@@ -1,78 +1,18 @@
 import {
-  pgTable,
-  uuid,
-  varchar,
-  boolean,
-  timestamp,
-  text,
-  integer,
-  real,
-  jsonb,
-  pgEnum,
+  pgTable, uuid, varchar, boolean, timestamp, text, integer, real, jsonb, pgEnum,
 } from 'drizzle-orm/pg-core';
 import { projects } from './projects';
 
-// ─── Enums ───────────────────────────────────────────────────────────────────
+export const agentTypeEnum = pgEnum('agent_type', ['analyzer','communicator','strategist']);
+export const agentExecutionStatusEnum = pgEnum('agent_execution_status', ['pending','running','success','error','timeout']);
+export const decisionTypeEnum = pgEnum('decision_type', ['prompt_update','icp_refinement','channel_switch','ab_test_winner','objection_update','pause_campaign']);
+export const ruleTypeEnum = pgEnum('rule_type', ['spam_word_avoid','subject_pattern','icp_insight','objection_pattern','send_time_optimal','tone_preference']);
+export const platformRuleTypeEnum = pgEnum('platform_rule_type', ['spam_word_avoid','subject_pattern','icp_insight','objection_pattern','send_time_optimal','tone_preference','industry_insight']);
+export const promptCreatedByEnum = pgEnum('prompt_created_by', ['system','strategist_agent','user']);
 
-export const agentTypeEnum = pgEnum('agent_type', [
-  'analyzer',
-  'communicator',
-  'strategist',
-]);
-
-export const agentExecutionStatusEnum = pgEnum('agent_execution_status', [
-  'pending',
-  'running',
-  'success',
-  'error',
-  'timeout',
-]);
-
-export const decisionTypeEnum = pgEnum('decision_type', [
-  'prompt_update',
-  'icp_refinement',
-  'channel_switch',
-  'ab_test_winner',
-  'objection_update',
-  'pause_campaign',
-]);
-
-export const ruleTypeEnum = pgEnum('rule_type', [
-  'spam_word_avoid',
-  'subject_pattern',
-  'icp_insight',
-  'objection_pattern',
-  'send_time_optimal',
-  'tone_preference',
-]);
-
-export const platformRuleTypeEnum = pgEnum('platform_rule_type', [
-  'spam_word_avoid',
-  'subject_pattern',
-  'icp_insight',
-  'objection_pattern',
-  'send_time_optimal',
-  'tone_preference',
-  'industry_insight',
-]);
-
-export const promptCreatedByEnum = pgEnum('prompt_created_by', [
-  'system',
-  'strategist_agent',
-  'user',
-]);
-
-// ─── Tables ──────────────────────────────────────────────────────────────────
-
-/**
- * Every agent run is logged here. Enables full audit trail, cost tracking,
- * and performance analysis across all three agent types.
- */
 export const agentExecutions = pgTable('agent_executions', {
   id: uuid('id').primaryKey().defaultRandom(),
-  projectId: uuid('project_id')
-    .references(() => projects.id)
-    .notNull(),
+  projectId: uuid('project_id').references(() => projects.id).notNull(),
   agentType: agentTypeEnum('agent_type').notNull(),
   trigger: varchar('trigger', { length: 100 }).notNull(),
   inputPayload: jsonb('input_payload').default({}),
@@ -81,24 +21,15 @@ export const agentExecutions = pgTable('agent_executions', {
   modelUsed: varchar('model_used', { length: 100 }),
   durationMs: integer('duration_ms').default(0).notNull(),
   status: agentExecutionStatusEnum('status').default('pending').notNull(),
-  // Self-referential FK: child executions point to their parent
   parentExecutionId: uuid('parent_execution_id'),
   errorMessage: text('error_message'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
-/**
- * Strategist Agent decisions. Each decision proposes a change (old_value → new_value).
- * 'applied' tracks whether the change was actually implemented.
- */
 export const strategyDecisions = pgTable('strategy_decisions', {
   id: uuid('id').primaryKey().defaultRandom(),
-  projectId: uuid('project_id')
-    .references(() => projects.id)
-    .notNull(),
-  agentExecutionId: uuid('agent_execution_id')
-    .references(() => agentExecutions.id)
-    .notNull(),
+  projectId: uuid('project_id').references(() => projects.id).notNull(),
+  agentExecutionId: uuid('agent_execution_id').references(() => agentExecutions.id).notNull(),
   decisionType: decisionTypeEnum('decision_type').notNull(),
   reasoning: text('reasoning').notNull(),
   oldValue: jsonb('old_value'),
@@ -108,20 +39,10 @@ export const strategyDecisions = pgTable('strategy_decisions', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
-/**
- * Project-level learned rules. Accumulate as the Strategist analyses results
- * for THIS specific project. confidence_score rises with evidence.
- */
 export const strategyLearnedRules = pgTable('strategy_learned_rules', {
   id: uuid('id').primaryKey().defaultRandom(),
-  projectId: uuid('project_id')
-    .references(() => projects.id)
-    .notNull(),
+  projectId: uuid('project_id').references(() => projects.id).notNull(),
   ruleType: ruleTypeEnum('rule_type').notNull(),
-  // JSON shape depends on rule_type:
-  // spam_word_avoid: { words: string[] }
-  // subject_pattern: { pattern: string, open_rate_delta: number }
-  // send_time_optimal: { hour_utc: number, day_of_week: number }
   ruleContent: jsonb('rule_content').notNull(),
   confidenceScore: real('confidence_score').default(0).notNull(),
   evidenceCount: integer('evidence_count').default(0).notNull(),
@@ -131,11 +52,6 @@ export const strategyLearnedRules = pgTable('strategy_learned_rules', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
-/**
- * Platform-wide learned rules — aggregate intelligence from ALL projects.
- * Enables cross-project learning (e.g., "in SaaS + US, subject lines with
- * 'quick question' have 34% higher open rates").
- */
 export const platformLearnedRules = pgTable('platform_learned_rules', {
   id: uuid('id').primaryKey().defaultRandom(),
   ruleType: platformRuleTypeEnum('rule_type').notNull(),
@@ -151,15 +67,9 @@ export const platformLearnedRules = pgTable('platform_learned_rules', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
-/**
- * Versioned prompt storage. Strategist Agent can create new prompt versions
- * and mark old ones inactive. performance_score tracks which versions win.
- */
 export const promptVersions = pgTable('prompt_versions', {
   id: uuid('id').primaryKey().defaultRandom(),
-  projectId: uuid('project_id')
-    .references(() => projects.id)
-    .notNull(),
+  projectId: uuid('project_id').references(() => projects.id).notNull(),
   agentType: agentTypeEnum('agent_type').notNull(),
   purpose: varchar('purpose', { length: 255 }).notNull(),
   promptText: text('prompt_text').notNull(),
@@ -170,8 +80,26 @@ export const promptVersions = pgTable('prompt_versions', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+export const emailTemplateStats = pgTable('email_template_stats', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').references(() => projects.id).notNull(),
+  campaignId: uuid('campaign_id').notNull(),
+  sequenceStepId: uuid('sequence_step_id'),
+  variantLabel: varchar('variant_label', { length: 10 }),
+  subjectSnippet: varchar('subject_snippet', { length: 255 }),
+  industry: varchar('industry', { length: 100 }),
+  icpLabel: varchar('icp_label', { length: 255 }),
+  businessCategory: varchar('business_category', { length: 100 }),
+  sampleSize: integer('sample_size').default(0).notNull(),
+  openRate: real('open_rate').default(0).notNull(),
+  clickRate: real('click_rate').default(0).notNull(),
+  replyRate: real('reply_rate').default(0).notNull(),
+  bounceRate: real('bounce_rate').default(0).notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
 
+export type EmailTemplateStats = typeof emailTemplateStats.$inferSelect;
+export type NewEmailTemplateStats = typeof emailTemplateStats.$inferInsert;
 export type AgentExecution = typeof agentExecutions.$inferSelect;
 export type NewAgentExecution = typeof agentExecutions.$inferInsert;
 export type StrategyDecision = typeof strategyDecisions.$inferSelect;
