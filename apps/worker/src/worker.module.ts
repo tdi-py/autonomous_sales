@@ -13,6 +13,8 @@ import { ExecuteCallProcessor } from './processors/execute-call.processor';
 import { StrategyReviewProcessor } from './processors/strategy-review.processor';
 import { ComplianceCheckProcessor } from './processors/compliance-check.processor';
 import { InboxSyncProcessor, InboxSyncCronService } from './processors/inbox-sync.processor';
+import { ContactFormProcessor } from './processors/contact-form.processor';
+import { AnalyzeLeadWebsiteProcessor } from './processors/analyze-lead-website.processor';
 // ── Faz 6 ──────────────────────────────────────────────────────────────────
 import {
   AbuseDetectionProcessor,
@@ -22,6 +24,8 @@ import {
 import { DatabaseModule } from './database/database.module';
 import { ScraperService } from './services/scraper.service';
 import { AnalyzerService } from './services/analyzer.service';
+import { ContactFormService } from './services/contact-form.service';
+import { LeadAnalyzerService } from './services/lead-analyzer.service';
 import { CommunicatorService } from './services/communicator.service';
 import { ContentCheckerService } from './services/content-checker.service';
 import { SmtpService } from './services/smtp.service';
@@ -69,6 +73,8 @@ class HealthController {
       { name: QUEUE_NAMES.PHONE_VERIFY },
       { name: QUEUE_NAMES.STRATEGY_REVIEW },
       { name: QUEUE_NAMES.COMPLIANCE_CHECK },
+      { name: QUEUE_NAMES.CONTACT_FORM_OUTREACH },
+      { name: QUEUE_NAMES.ANALYZE_LEAD_WEBSITE },
       { name: 'inbox-sync' },
       { name: 'execute-call' },
       // ── Faz 6 ────────────────────────────────────────────────────────────
@@ -81,6 +87,8 @@ class HealthController {
     // ── Faz 1 ──────────────────────────────────────────────────────────────
     ScraperService,
     AnalyzerService,
+    ContactFormService,
+    LeadAnalyzerService,
     // ── Faz 2 ──────────────────────────────────────────────────────────────
     CommunicatorService,
     ContentCheckerService,
@@ -115,6 +123,8 @@ class HealthController {
     ComplianceCheckProcessor,
     InboxSyncProcessor,
     AbuseDetectionProcessor,
+    ContactFormProcessor,
+    AnalyzeLeadWebsiteProcessor,
   ],
 })
 export class WorkerModule {}

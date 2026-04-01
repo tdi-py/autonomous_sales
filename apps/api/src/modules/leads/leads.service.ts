@@ -1,12 +1,19 @@
 import { Injectable, Inject, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { eq, and, SQL } from 'drizzle-orm';
+import { InjectQueue } from '@nestjs/bull';
+import type { Queue } from 'bull';
 import * as schema from '@autonomous-sales/database';
 import { DATABASE_TOKEN } from '../../database/database.module';
+import { QUEUE_NAMES } from '@autonomous-sales/shared';
 import type { CreateLeadDto, UpdateLeadDto, LeadQueryDto } from './dto/lead.dto';
 
 @Injectable()
 export class LeadsService {
-  constructor(@Inject(DATABASE_TOKEN) private readonly db: any) {}
+  constructor(
+    @Inject(DATABASE_TOKEN) private readonly db: any,
+    @InjectQueue(QUEUE_NAMES.ANALYZE_LEAD_WEBSITE) private readonly analyzeLeadQueue: Queue,
+    @InjectQueue(QUEUE_NAMES.CONTACT_FORM_OUTREACH) private readonly contactFormQueue: Queue,
+  ) {}
 
   async create(userId: string, dto: CreateLeadDto) {
     await this.assertProjectAccess(dto.projectId, userId);
@@ -81,6 +88,94 @@ export class LeadsService {
       websiteAnalyzedAt: enrichment?.websiteAnalyzedAt ?? null,
       analysisAvailable: !!enrichment?.websiteAnalyzedAt,
     };
+  }
+
+  async analyzeWebsite(leadId: string, userId: string): Promise<{ queued: boolean; message: string }> {
+    const lead = await this.findOne(leadId, userId);
+    if (!(lead as any).website) {
+      throw new NotFoundException('Bu lead için website bilgisi bulunmuyor');
+    }
+
+    await this.analyzeLeadQueue.add(
+      {
+        leadId,
+        projectId: (lead as any).projectId,
+        websiteUrl: (lead as any).website,
+        agentType: 'analyzer',
+      },
+      { attempts: 2, backoff: { type: 'exponential', delay: 30_000 } },
+    );
+
+    return { queued: true, message: 'Website analizi kuyruğa alındı. Birkaç dakika içinde sonuçlar hazır olacak.' };
+  }
+
+  async queueContactForm(
+    leadId: string,
+    userId: string,
+    campaignId?: string,
+  ): Promise<{ queued: boolean; message: string }> {
+    const lead = await this.findOne(leadId, userId);
+    if (!(lead as any).website) {
+      throw new NotFoundException('Bu lead için website bilgisi bulunmuyor');
+    }
+
+    await this.contactFormQueue.add(
+      {
+        leadId,
+        projectId: (lead as any).projectId,
+        campaignId: campaignId ?? null,
+        websiteUrl: (lead as any).website,
+        agentType: 'communicator',
+      },
+      { attempts: 2, backoff: { type: 'exponential', delay: 30_000 } },
+    );
+
+    return { queued: true, message: 'İletişim formu analizi kuyruğa alındı. AI formu bulacak ve içerik hazırlayacak.' };
+  }
+
+  async approveContactForm(
+    leadId: string,
+    submissionId: string,
+    userId: string,
+    approvedContent: { name: string; email: string; phone?: string; message: string; company?: string },
+  ): Promise<{ queued: boolean }> {
+    const lead = await this.findOne(leadId, userId);
+
+    const submission = await this.db.query.contactFormSubmissions.findFirst({
+      where: eq(schema.contactFormSubmissions.id, submissionId),
+    }) as schema.ContactFormSubmission | null;
+
+    if (!submission || submission.leadId !== leadId) {
+      throw new NotFoundException('Contact form submission not found');
+    }
+
+    // Mark as approved
+    await this.db
+      .update(schema.contactFormSubmissions)
+      .set({ status: 'approved', approvedAt: new Date(), updatedAt: new Date() })
+      .where(eq(schema.contactFormSubmissions.id, submissionId));
+
+    // Queue for submission
+    await this.contactFormQueue.add(
+      {
+        leadId,
+        projectId: (lead as any).projectId,
+        websiteUrl: submission.websiteUrl,
+        agentType: 'communicator',
+        approvedContent,
+      },
+      { attempts: 2, backoff: { type: 'exponential', delay: 10_000 } },
+    );
+
+    return { queued: true };
+  }
+
+  async getContactFormSubmissions(leadId: string, userId: string) {
+    await this.findOne(leadId, userId);
+    return this.db.query.contactFormSubmissions.findMany({
+      where: eq(schema.contactFormSubmissions.leadId, leadId),
+      orderBy: (t: any, { desc }: any) => [desc(t.createdAt)],
+    });
   }
 
   async importCsv(userId: string, projectId: string) {

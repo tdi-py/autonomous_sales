@@ -121,6 +121,94 @@ export class OutreachService {
     return stats.map(s => ({ industry: s.industry ?? '', icpLabel: s.icpLabel ?? '', subjectSnippet: s.subjectSnippet ?? '', variantLabel: s.variantLabel ?? '', openRate: s.openRate, replyRate: s.replyRate, sampleSize: s.sampleSize }));
   }
 
+  async getContactFormSubmissions(projectId: string, userId: string, filters?: { status?: string; page?: number; limit?: number }) {
+    await this.assertProjectAccess(projectId, userId);
+    const page = filters?.page ?? 1;
+    const limit = filters?.limit ?? 50;
+
+    const projectLeads = await this.db.query.leads.findMany({
+      where: eq(schema.leads.projectId, projectId),
+      columns: { id: true },
+    });
+    const leadIds = projectLeads.map((l: any) => l.id);
+
+    if (leadIds.length === 0) return { submissions: [], total: 0 };
+
+    const allSubmissions = await this.db.query.contactFormSubmissions.findMany({
+      where: inArray(schema.contactFormSubmissions.leadId, leadIds),
+    });
+
+    const filtered = filters?.status
+      ? allSubmissions.filter((s: any) => s.status === filters.status)
+      : allSubmissions;
+
+    const total = filtered.length;
+    const paged = filtered
+      .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice((page - 1) * limit, page * limit);
+
+    const submissions = await Promise.all(
+      paged.map(async (sub: any) => {
+        const lead = await this.db.query.leads.findFirst({ where: eq(schema.leads.id, sub.leadId) });
+        return {
+          ...sub,
+          leadCompanyName: lead?.companyName ?? '',
+          leadContactName: lead?.contactName ?? '',
+          leadWebsite: lead?.website ?? '',
+        };
+      }),
+    );
+
+    return { submissions, total };
+  }
+
+  async getPlatformTemplateInsights(projectId: string, userId: string) {
+    await this.assertProjectAccess(projectId, userId);
+
+    // Get learned rules for this project enriched with platform rules
+    const projectRules = await this.db.query.strategyLearnedRules.findMany({
+      where: and(
+        eq(schema.strategyLearnedRules.projectId, projectId),
+        eq(schema.strategyLearnedRules.isActive, true),
+      ),
+      orderBy: [desc(schema.strategyLearnedRules.confidenceScore)],
+    });
+
+    const platformRules = await this.db.query.platformLearnedRules.findMany({
+      where: eq(schema.platformLearnedRules.isActive, true),
+      orderBy: [desc(schema.platformLearnedRules.confidenceScore)],
+      limit: 20,
+    });
+
+    // Get template stats for this project grouped by businessCategory
+    const templateStats = await this.db.query.emailTemplateStats.findMany({
+      where: eq(schema.emailTemplateStats.projectId, projectId),
+      orderBy: [desc(schema.emailTemplateStats.replyRate)],
+    });
+
+    // Group template stats by business category
+    const byCategory: Record<string, typeof templateStats> = {};
+    for (const stat of templateStats) {
+      const key = stat.businessCategory ?? stat.industry ?? 'general';
+      if (!byCategory[key]) byCategory[key] = [];
+      byCategory[key].push(stat);
+    }
+
+    const categoryInsights = Object.entries(byCategory).map(([category, stats]) => ({
+      category,
+      bestTemplate: stats.sort((a: any, b: any) => b.replyRate - a.replyRate)[0],
+      worstTemplate: stats.sort((a: any, b: any) => a.replyRate - b.replyRate)[0],
+      avgReplyRate: stats.reduce((sum: number, s: any) => sum + s.replyRate, 0) / stats.length,
+      totalSamples: stats.reduce((sum: number, s: any) => sum + s.sampleSize, 0),
+    }));
+
+    return {
+      projectRules: projectRules.slice(0, 10),
+      platformRules: platformRules.slice(0, 10),
+      categoryInsights,
+    };
+  }
+
   private async assertProjectAccess(projectId: string, userId: string) {
     const project = await this.db.query.projects.findFirst({ where: eq(schema.projects.id, projectId) });
     if (!project) throw new NotFoundException('Project not found');

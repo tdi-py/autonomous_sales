@@ -175,7 +175,9 @@ export class WarmupService {
       password: credentials?.password as string ?? '',
     };
 
-    const seedRecipient = this.getSeedRecipient();
+    const accountSeedEmails = Array.isArray(account.warmupSeedEmails) && (account.warmupSeedEmails as string[]).length > 0
+      ? account.warmupSeedEmails as string[]
+      : null;
     let sent = 0;
     let errors = 0;
 
@@ -183,6 +185,9 @@ export class WarmupService {
       try {
         const subject = this.pickRandom(WARMUP_SUBJECTS);
         const body = this.pickRandom(WARMUP_BODIES);
+        const seedRecipient = accountSeedEmails
+          ? accountSeedEmails[i % accountSeedEmails.length]
+          : this.getSeedRecipient();
 
         const result = await this.smtpService.sendEmail(smtpCreds, {
           from: account.emailAddress,
@@ -237,6 +242,14 @@ export class WarmupService {
       this.logger.log(`[warmup] Day ${currentDay} complete — advancing to day ${nextDay} (${nextDailyLimit} emails/day)`);
       return { sent, errors, completed: false };
     }
+  }
+
+  async updateSeedEmails(emailAccountId: string, seedEmails: string[]): Promise<void> {
+    await this.db
+      .update(schema.emailAccounts)
+      .set({ warmupSeedEmails: seedEmails, updatedAt: new Date() })
+      .where(eq(schema.emailAccounts.id, emailAccountId));
+    this.logger.log(`[warmup] Updated seed emails for account: ${emailAccountId} — ${seedEmails.length} emails`);
   }
 
   async pauseWarmup(emailAccountId: string): Promise<void> {

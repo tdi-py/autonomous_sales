@@ -2,12 +2,9 @@ import {
   Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Request,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { InjectQueue } from '@nestjs/bull';
-import type { Queue } from 'bull';
 import { LeadsService } from './leads.service';
 import { CreateLeadDto, UpdateLeadDto, LeadQueryDto } from './dto/lead.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { QUEUE_NAMES } from '@autonomous-sales/shared';
 
 type AuthRequest = { user: { userId: string } };
 
@@ -16,10 +13,7 @@ type AuthRequest = { user: { userId: string } };
 @UseGuards(JwtAuthGuard)
 @Controller('leads')
 export class LeadsController {
-  constructor(
-    private readonly leadsService: LeadsService,
-    @InjectQueue(QUEUE_NAMES.ANALYZE_LEAD_WEBSITE) private readonly analyzeLeadWebsiteQueue: Queue,
-  ) {}
+  constructor(private readonly leadsService: LeadsService) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a single lead' })
@@ -69,26 +63,46 @@ export class LeadsController {
     return this.leadsService.getPhoneVerification(id, req.user.userId);
   }
 
+  // ─── Website analysis ──────────────────────────────────────────────────────
+
   @Post(':id/analyze-website')
-  @ApiOperation({ summary: 'Queue AI website analysis for a lead' })
-  async analyzeLeadWebsite(
-    @Param('id') id: string,
-    @Request() req: AuthRequest,
-    @Body('projectId') projectId: string,
-  ) {
-    const lead = await this.leadsService.findOne(id, req.user.userId);
-    const websiteUrl = (lead as any).website ?? (lead as any).enrichment?.companyWebsite;
-    if (!websiteUrl) return { success: false, message: 'Lead has no website URL configured' };
-    const job = await this.analyzeLeadWebsiteQueue.add(
-      { leadId: id, projectId, websiteUrl, agentType: 'analyzer' },
-      { attempts: 2, backoff: { type: 'exponential', delay: 30_000 } },
-    );
-    return { success: true, jobId: job.id, message: 'Website analysis queued' };
+  @ApiOperation({ summary: 'Queue AI website analysis — pain points, challenges, suggested approach' })
+  analyzeLeadWebsite(@Param('id') id: string, @Request() req: AuthRequest) {
+    return this.leadsService.analyzeWebsite(id, req.user.userId);
   }
 
   @Get(':id/pain-points')
-  @ApiOperation({ summary: 'Get AI-extracted pain points for a lead' })
+  @ApiOperation({ summary: 'Get AI-extracted pain points and website insights for a lead' })
   getPainPoints(@Param('id') id: string, @Request() req: AuthRequest) {
     return this.leadsService.getPainPoints(id, req.user.userId);
+  }
+
+  // ─── Contact form outreach ──────────────────────────────────────────────────
+
+  @Post(':id/contact-form')
+  @ApiOperation({ summary: 'AI ile lead\'s iletişim formunu bul ve içerik hazırla (onay bekler)' })
+  queueContactForm(
+    @Param('id') id: string,
+    @Request() req: AuthRequest,
+    @Body('campaignId') campaignId?: string,
+  ) {
+    return this.leadsService.queueContactForm(id, req.user.userId, campaignId);
+  }
+
+  @Post(':id/contact-form/:submissionId/approve')
+  @ApiOperation({ summary: 'Onaylanan içerikle contact form submit et' })
+  approveContactForm(
+    @Param('id') id: string,
+    @Param('submissionId') submissionId: string,
+    @Request() req: AuthRequest,
+    @Body() body: { name: string; email: string; phone?: string; message: string; company?: string },
+  ) {
+    return this.leadsService.approveContactForm(id, submissionId, req.user.userId, body);
+  }
+
+  @Get(':id/contact-form-submissions')
+  @ApiOperation({ summary: 'Lead için tüm contact form submission\'larını listele' })
+  getContactFormSubmissions(@Param('id') id: string, @Request() req: AuthRequest) {
+    return this.leadsService.getContactFormSubmissions(id, req.user.userId);
   }
 }

@@ -8,6 +8,9 @@ import {
   ChevronDown,
   ChevronUp,
   Loader2,
+  Plus,
+  X as XIcon,
+  Save,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -39,6 +42,7 @@ interface EmailAccount {
   spfValid?: boolean | null;
   dkimValid?: boolean | null;
   dmarcValid?: boolean | null;
+  warmupSeedEmails?: string[] | null;
   createdAt: string;
 }
 
@@ -85,6 +89,9 @@ function AccountCard({ account, onDeleted }: AccountCardProps) {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [testLoading, setTestLoading] = useState(false);
   const [localAccount, setLocalAccount] = useState(account);
+  const [seedEmails, setSeedEmails] = useState<string[]>(account.warmupSeedEmails ?? []);
+  const [seedEmailInput, setSeedEmailInput] = useState('');
+  const [savingSeedEmails, setSavingSeedEmails] = useState(false);
 
   const apiFetch = useCallback(async (path: string, options?: RequestInit) => {
     const token = getAuthToken(); // ✅ Cookie-based token
@@ -167,6 +174,28 @@ function AccountCard({ account, onDeleted }: AccountCardProps) {
     } finally {
       setLoadingAction(null);
     }
+  };
+
+  const handleSaveSeedEmails = async () => {
+    setSavingSeedEmails(true);
+    try {
+      await apiFetch(`/email-accounts/${account.id}/seed-emails`, {
+        method: 'PUT',
+        body: JSON.stringify({ seedEmails }),
+      });
+    } catch (err) {
+      alert(`Hata: ${(err as Error).message}`);
+    } finally {
+      setSavingSeedEmails(false);
+    }
+  };
+
+  const handleAddSeedEmail = () => {
+    const email = seedEmailInput.trim();
+    if (!email || seedEmails.includes(email)) return;
+    if (!email.includes('@')) { alert('Geçerli bir email adresi girin'); return; }
+    setSeedEmails((prev) => [...prev, email]);
+    setSeedEmailInput('');
   };
 
   const handleRunTest = async () => {
@@ -316,6 +345,65 @@ function AccountCard({ account, onDeleted }: AccountCardProps) {
               onResume={() => handleAction('resume-warmup')}
               loading={loadingAction === 'start-warmup' || loadingAction === 'pause-warmup' || loadingAction === 'resume-warmup'}
             />
+          </div>
+
+          {/* Warmup Seed Emails */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Isındırma Test Emailleri
+              </p>
+              <button
+                onClick={handleSaveSeedEmails}
+                disabled={savingSeedEmails}
+                className="flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-50"
+              >
+                {savingSeedEmails ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                Kaydet
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Isındırma emailleri bu adreslere gönderilecek. Spam yükünü azaltmak için kendi test emaillerinizi girin.
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="email"
+                value={seedEmailInput}
+                onChange={(e) => setSeedEmailInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleAddSeedEmail(); }}
+                placeholder="test@gmail.com"
+                className="flex-1 border border-border rounded-md px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary bg-background"
+              />
+              <button
+                onClick={handleAddSeedEmail}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs hover:bg-primary/90"
+              >
+                <Plus className="w-3 h-3" />
+                Ekle
+              </button>
+            </div>
+            {seedEmails.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {seedEmails.map((email) => (
+                  <span
+                    key={email}
+                    className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded-full text-xs border border-blue-100"
+                  >
+                    {email}
+                    <button
+                      onClick={() => setSeedEmails((prev) => prev.filter((e) => e !== email))}
+                      className="hover:text-red-500"
+                    >
+                      <XIcon className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                ⚠️ Test email eklenmedi. Env var SEED_TEST_GMAIL kullanılacak. Test emaillerinizi ekleyerek daha iyi kontrol sağlayabilirsiniz.
+              </p>
+            )}
           </div>
 
           {/* Deliverability */}
