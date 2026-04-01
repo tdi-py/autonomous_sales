@@ -84,6 +84,35 @@ export const suppressionList = pgTable('suppression_list', {
   addedAt: timestamp('added_at').defaultNow().notNull(),
 });
 
+export const contactFormSubmissionStatusEnum = pgEnum('contact_form_submission_status', [
+  'pending_approval',
+  'approved',
+  'submitted',
+  'failed',
+  'rejected',
+]);
+
+export const contactFormSubmissions = pgTable('contact_form_submissions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  leadId: uuid('lead_id').references(() => leads.id).notNull(),
+  campaignId: uuid('campaign_id').references(() => campaigns.id),
+  outreachEventId: uuid('outreach_event_id').references(() => outreachEvents.id),
+  websiteUrl: varchar('website_url', { length: 500 }).notNull(),
+  contactFormUrl: varchar('contact_form_url', { length: 500 }),
+  status: contactFormSubmissionStatusEnum('status').default('pending_approval').notNull(),
+  generatedContent: jsonb('generated_content').default({}),
+  submittedContent: jsonb('submitted_content').default({}),
+  aiReasoning: text('ai_reasoning'),
+  errorMessage: text('error_message'),
+  screenshotUrl: varchar('screenshot_url', { length: 500 }),
+  submittedAt: timestamp('submitted_at'),
+  approvedAt: timestamp('approved_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 export type OutreachEvent = typeof outreachEvents.$inferSelect;
 export type InboxMessage = typeof inboxMessages.$inferSelect;
 export type SuppressionEntry = typeof suppressionList.$inferSelect;
+export type ContactFormSubmission = typeof contactFormSubmissions.$inferSelect;
+export type NewContactFormSubmission = typeof contactFormSubmissions.$inferInsert;

@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Delete,
   Body,
   Param,
@@ -19,7 +20,7 @@ import {
   ApiParam,
 } from '@nestjs/swagger';
 import { EmailAccountsService } from './email-accounts.service';
-import { CreateEmailAccountDto } from './dto/email-account.dto';
+import { CreateEmailAccountDto, UpdateSeedEmailsDto } from './dto/email-account.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
 type AuthRequest = { user: { userId: string } };
@@ -124,5 +125,18 @@ export class EmailAccountsController {
   @ApiParam({ name: 'id' })
   getDeliverabilityHistory(@Param('id') id: string, @Request() req: AuthRequest) {
     return this.service.getDeliverabilityHistory(id, req.user.userId);
+  }
+
+  // ─── Warmup seed emails ─────────────────────────────────────────────────────
+
+  @Put(':id/seed-emails')
+  @ApiOperation({ summary: 'Isındırma için kullanılacak test email adreslerini güncelle' })
+  @ApiParam({ name: 'id' })
+  updateSeedEmails(
+    @Param('id') id: string,
+    @Request() req: AuthRequest,
+    @Body() dto: UpdateSeedEmailsDto,
+  ) {
+    return this.service.updateSeedEmails(id, req.user.userId, dto.seedEmails);
   }
 }

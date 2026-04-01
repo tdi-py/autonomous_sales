@@ -16,6 +16,7 @@ import {
   Brain,
   CheckCircle2,
   AlertTriangle,
+  Send,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -42,6 +43,7 @@ const TABS = [
   { id: 'campaigns',      label: 'Campaigns',          icon: Megaphone },
   { id: 'leads',          label: 'Leads',              icon: Users },
   { id: 'email-accounts', label: 'Email Hesapları',    icon: Mail },
+  { id: 'outreach',       label: 'Outreach Paneli',    icon: Send },
   { id: 'strategy',       label: 'Strategy',           icon: Brain },
   { id: 'settings',       label: 'Settings',           icon: Settings },
 ];

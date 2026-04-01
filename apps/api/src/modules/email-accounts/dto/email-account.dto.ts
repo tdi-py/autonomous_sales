@@ -7,6 +7,7 @@ import {
   Min,
   Max,
   IsUUID,
+  IsArray,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -60,6 +61,13 @@ export class CreateEmailAccountDto {
   @IsOptional()
   @IsString()
   senderName?: string;
+}
+
+export class UpdateSeedEmailsDto {
+  @ApiProperty({ description: 'Isındırma emaillerinin gönderileceği test email adresleri', type: [String] })
+  @IsArray()
+  @IsEmail({}, { each: true })
+  seedEmails!: string[];
 }
 
 export class TestConnectionDto {
