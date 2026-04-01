@@ -2,35 +2,14 @@ import { pgTable, uuid, varchar, integer, boolean, timestamp, text, jsonb, pgEnu
 import { projects } from './projects';
 import { icpProfiles } from './projects';
 
-export const leadSourceEnum = pgEnum('lead_source', [
-  'manual',
-  'scraped',
-  'apollo',
-  'google_maps',
-  'csv_import',
-]);
-
-export const leadStatusEnum = pgEnum('lead_status', [
-  'new',
-  'contacted',
-  'responded',
-  'qualified',
-  'converted',
-  'lost',
-]);
-
-export const numberTypeEnum = pgEnum('number_type', ['landline', 'mobile', 'voip', 'unknown']);
-export const aiCallClassificationEnum = pgEnum('ai_call_classification', [
-  'can_call_ai',
-  'can_call_manual',
-  'cannot_call',
-]);
+export const leadSourceEnum = pgEnum('lead_source', ['manual','scraped','apollo','google_maps','csv_import']);
+export const leadStatusEnum = pgEnum('lead_status', ['new','contacted','responded','qualified','converted','lost']);
+export const numberTypeEnum = pgEnum('number_type', ['landline','mobile','voip','unknown']);
+export const aiCallClassificationEnum = pgEnum('ai_call_classification', ['can_call_ai','can_call_manual','cannot_call']);
 
 export const leads = pgTable('leads', {
   id: uuid('id').primaryKey().defaultRandom(),
-  projectId: uuid('project_id')
-    .references(() => projects.id)
-    .notNull(),
+  projectId: uuid('project_id').references(() => projects.id).notNull(),
   icpProfileId: uuid('icp_profile_id').references(() => icpProfiles.id),
   companyName: varchar('company_name', { length: 255 }),
   contactName: varchar('contact_name', { length: 255 }),
@@ -50,10 +29,7 @@ export const leads = pgTable('leads', {
 
 export const leadEnrichment = pgTable('lead_enrichment', {
   id: uuid('id').primaryKey().defaultRandom(),
-  leadId: uuid('lead_id')
-    .references(() => leads.id)
-    .unique()
-    .notNull(),
+  leadId: uuid('lead_id').references(() => leads.id).unique().notNull(),
   companyWebsite: varchar('company_website', { length: 500 }),
   employeeCount: varchar('employee_count', { length: 50 }),
   techStack: jsonb('tech_stack'),
@@ -64,13 +40,14 @@ export const leadEnrichment = pgTable('lead_enrichment', {
   employmentVerifiedAt: timestamp('employment_verified_at'),
   currentCompany: varchar('current_company', { length: 255 }),
   enrichedAt: timestamp('enriched_at'),
+  painPoints: jsonb('pain_points').default([]),
+  websiteInsights: jsonb('website_insights'),
+  websiteAnalyzedAt: timestamp('website_analyzed_at'),
 });
 
 export const phoneVerification = pgTable('phone_verification', {
   id: uuid('id').primaryKey().defaultRandom(),
-  leadId: uuid('lead_id')
-    .references(() => leads.id)
-    .notNull(),
+  leadId: uuid('lead_id').references(() => leads.id).notNull(),
   phoneNumber: varchar('phone_number', { length: 50 }).notNull(),
   numberType: numberTypeEnum('number_type').default('unknown').notNull(),
   carrier: varchar('carrier', { length: 100 }),
@@ -89,12 +66,8 @@ export const phoneVerification = pgTable('phone_verification', {
 
 export const dealStages = pgTable('deal_stages', {
   id: uuid('id').primaryKey().defaultRandom(),
-  projectId: uuid('project_id')
-    .references(() => projects.id)
-    .notNull(),
-  leadId: uuid('lead_id')
-    .references(() => leads.id)
-    .notNull(),
+  projectId: uuid('project_id').references(() => projects.id).notNull(),
+  leadId: uuid('lead_id').references(() => leads.id).notNull(),
   stage: varchar('stage', { length: 50 }).default('lead').notNull(),
   valueEstimate: varchar('value_estimate', { length: 50 }),
   notes: text('notes'),

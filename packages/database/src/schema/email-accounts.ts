@@ -12,37 +12,19 @@ import {
 import { projects } from './projects';
 
 export const emailProviderEnum = pgEnum('email_provider', ['gmail', 'outlook', 'custom_smtp']);
-export const warmupStatusEnum = pgEnum('warmup_status', [
-  'not_started',
-  'warming',
-  'ready',
-  'paused',
-]);
-export const deliverabilityTestTypeEnum = pgEnum('deliverability_test_type', [
-  'seed_test',
-  'dns_check',
-  'content_scan',
-]);
-export const deliverabilityResultEnum = pgEnum('deliverability_result', [
-  'inbox',
-  'spam',
-  'promotions',
-  'junk',
-  'not_tested',
-]);
+export const warmupStatusEnum = pgEnum('warmup_status', ['not_started','warming','ready','paused']);
+export const deliverabilityTestTypeEnum = pgEnum('deliverability_test_type', ['seed_test','dns_check','content_scan']);
+export const deliverabilityResultEnum = pgEnum('deliverability_result', ['inbox','spam','promotions','junk','not_tested']);
 
 export const emailAccounts = pgTable('email_accounts', {
   id: uuid('id').primaryKey().defaultRandom(),
-  projectId: uuid('project_id')
-    .references(() => projects.id)
-    .notNull(),
+  projectId: uuid('project_id').references(() => projects.id).notNull(),
   emailAddress: varchar('email_address', { length: 255 }).notNull(),
   provider: emailProviderEnum('provider').default('custom_smtp').notNull(),
   smtpHost: varchar('smtp_host', { length: 255 }),
   smtpPort: integer('smtp_port'),
   imapHost: varchar('imap_host', { length: 255 }),
   imapPort: integer('imap_port'),
-  // NOTE: Encrypt auth_credentials before storing in production
   authCredentials: jsonb('auth_credentials'),
   warmupStatus: warmupStatusEnum('warmup_status').default('not_started').notNull(),
   warmupDay: integer('warmup_day').default(0).notNull(),
@@ -51,15 +33,14 @@ export const emailAccounts = pgTable('email_accounts', {
   spfValid: boolean('spf_valid'),
   dkimValid: boolean('dkim_valid'),
   dmarcValid: boolean('dmarc_valid'),
+  isSeedAccount: boolean('is_seed_account').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
 export const warmupSchedule = pgTable('warmup_schedule', {
   id: uuid('id').primaryKey().defaultRandom(),
-  emailAccountId: uuid('email_account_id')
-    .references(() => emailAccounts.id)
-    .notNull(),
+  emailAccountId: uuid('email_account_id').references(() => emailAccounts.id).notNull(),
   dayNumber: integer('day_number').notNull(),
   targetSends: integer('target_sends').notNull(),
   actualSends: integer('actual_sends').default(0).notNull(),
@@ -70,9 +51,7 @@ export const warmupSchedule = pgTable('warmup_schedule', {
 
 export const deliverabilityTests = pgTable('deliverability_tests', {
   id: uuid('id').primaryKey().defaultRandom(),
-  emailAccountId: uuid('email_account_id')
-    .references(() => emailAccounts.id)
-    .notNull(),
+  emailAccountId: uuid('email_account_id').references(() => emailAccounts.id).notNull(),
   campaignId: uuid('campaign_id'),
   testType: deliverabilityTestTypeEnum('test_type').default('seed_test').notNull(),
   gmailResult: deliverabilityResultEnum('gmail_result').default('not_tested').notNull(),
