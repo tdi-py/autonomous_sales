@@ -34,6 +34,7 @@ export const emailAccounts = pgTable('email_accounts', {
   dkimValid: boolean('dkim_valid'),
   dmarcValid: boolean('dmarc_valid'),
   isSeedAccount: boolean('is_seed_account').default(false).notNull(),
+  warmupSeedEmails: jsonb('warmup_seed_emails').default([]),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

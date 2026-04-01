@@ -6,7 +6,10 @@ import { LeadsService } from './leads.service';
 
 @Module({
   imports: [
-    BullModule.registerQueue({ name: QUEUE_NAMES.ANALYZE_LEAD_WEBSITE }),
+    BullModule.registerQueue(
+      { name: QUEUE_NAMES.ANALYZE_LEAD_WEBSITE },
+      { name: QUEUE_NAMES.CONTACT_FORM_OUTREACH },
+    ),
   ],
   controllers: [LeadsController],
   providers: [LeadsService],

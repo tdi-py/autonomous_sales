@@ -360,6 +360,18 @@ export class EmailAccountsService {
     };
   }
 
+  async updateSeedEmails(id: string, userId: string, seedEmails: string[]): Promise<{ updated: boolean; seedEmails: string[] }> {
+    const account = await this.findOne(id, userId);
+
+    await this.db
+      .update(schema.emailAccounts)
+      .set({ warmupSeedEmails: seedEmails, updatedAt: new Date() })
+      .where(eq(schema.emailAccounts.id, account.id));
+
+    this.logger.log(`[email-accounts] Updated seed emails for: ${account.emailAddress} (${seedEmails.length} emails)`);
+    return { updated: true, seedEmails };
+  }
+
   async getDeliverabilityHistory(id: string, userId: string): Promise<schema.DeliverabilityTest[]> {
     await this.findOne(id, userId);
 

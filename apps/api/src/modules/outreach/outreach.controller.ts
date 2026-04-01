@@ -83,4 +83,33 @@ export class OutreachController {
   ) {
     return this.outreachService.queueLeadWebsiteAnalysis(leadId, projectId, req.user.userId);
   }
+
+  // ─── Contact form submissions panel ───────────────────────────────────────
+
+  @Get('contact-form-submissions')
+  @ApiOperation({ summary: 'Proje için tüm contact form submission\'larını listele' })
+  @ApiQuery({ name: 'status', required: false, enum: ['pending_approval','approved','submitted','failed','rejected'] })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  getContactFormSubmissions(
+    @Param('projectId') projectId: string,
+    @Request() req: AuthRequest,
+    @Query('status') status?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.outreachService.getContactFormSubmissions(projectId, req.user.userId, {
+      status,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
+  }
+
+  // ─── Platform template insights ────────────────────────────────────────────
+
+  @Get('platform-insights')
+  @ApiOperation({ summary: 'AI öğrenilen kurallar ve template performansı (segment bazlı)' })
+  getPlatformTemplateInsights(@Param('projectId') projectId: string, @Request() req: AuthRequest) {
+    return this.outreachService.getPlatformTemplateInsights(projectId, req.user.userId);
+  }
 }
