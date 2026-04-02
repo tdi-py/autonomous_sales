@@ -157,10 +157,20 @@ export class ProjectsService {
 
     if (!analysis.analyzedAt) {
       const failed = (analysis.rawScrapedData as { error?: string } | null)?.error;
-      return {
-        status: failed ? 'failed' : 'pending',
-        error: failed ?? null,
-      };
+
+      // Timeout: 3 dakikadan uzun süre pending kaldıysa failed say
+      const TIMEOUT_MS = 3 * 60 * 1000;
+      const createdAt = analysis.createdAt ? new Date(analysis.createdAt).getTime() : 0;
+      const timedOut = createdAt > 0 && (Date.now() - createdAt) > TIMEOUT_MS;
+
+      if (failed || timedOut) {
+        return {
+          status: 'failed',
+          error: failed ?? 'Analysis timed out. Worker may not be running or LLM is unreachable.',
+        };
+      }
+
+      return { status: 'pending', error: null };
     }
 
     const icpProfiles = await this.db.query.icpProfiles.findMany({
