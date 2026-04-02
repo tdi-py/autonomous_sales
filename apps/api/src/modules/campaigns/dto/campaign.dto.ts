@@ -49,6 +49,12 @@ export class CreateCampaignDto {
   @IsOptional()
   @IsBoolean()
   scriptOnly?: boolean;
+
+  @ApiPropertyOptional({ example: 'İlk 100 kullanıcıya ilk 5 siparişi ücretsiz' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  offer?: string;
 }
 
 export class UpdateCampaignDto {

@@ -16,6 +16,7 @@ interface UseCampaignContentStatusOptions {
   campaignId: string | null;
   token?: string;
   pollingIntervalMs?: number;
+  maxPolls?: number;
   enabled?: boolean;
   onReady?: () => void;
   onError?: (msg: string) => void;
@@ -31,6 +32,7 @@ export function useCampaignContentStatus({
   campaignId,
   token,
   pollingIntervalMs = 3000,
+  maxPolls = 60,
   enabled = true,
   onReady,
   onError,
@@ -40,6 +42,7 @@ export function useCampaignContentStatus({
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const onReadyRef = useRef(onReady);
   const onErrorRef = useRef(onError);
+  const pollCountRef = useRef(0);
 
   useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
   useEffect(() => { onErrorRef.current = onError; }, [onError]);
@@ -54,6 +57,14 @@ export function useCampaignContentStatus({
 
   const poll = useCallback(async () => {
     if (!campaignId) return;
+
+    pollCountRef.current += 1;
+    if (pollCountRef.current > maxPolls) {
+      stopPolling();
+      onErrorRef.current?.('İçerik üretimi zaman aşımına uğradı. Worker servisinin çalıştığını ve LLM\'nin yapılandırıldığını kontrol edin.');
+      return;
+    }
+
     const tok = token ?? getToken();
     try {
       const result = await api.get<CampaignContentStatus>(
@@ -72,11 +83,12 @@ export function useCampaignContentStatus({
     } catch (err) {
       console.error('[useCampaignContentStatus] poll error:', err);
     }
-  }, [campaignId, token, stopPolling]);
+  }, [campaignId, token, maxPolls, stopPolling]);
 
   useEffect(() => {
     if (!campaignId || !enabled) return;
 
+    pollCountRef.current = 0;
     setIsPolling(true);
     poll();
 

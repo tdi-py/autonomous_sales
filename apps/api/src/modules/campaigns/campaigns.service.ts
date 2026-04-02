@@ -60,6 +60,7 @@ export class CampaignsService {
           icpProfileId: dto.icpProfileId,
           targetLanguage: dto.targetLanguage ?? 'en',
           additionalNotes: dto.additionalNotes,
+          offer: dto.offer,
           scriptOnly: dto.scriptOnly ?? false,
           contentStatus: 'generating',
           leadIds: [],

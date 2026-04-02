@@ -14,6 +14,7 @@ export interface CommunicatorContext {
   industry: string;
   targetLanguage: string;
   industryTemplateHint?: string;
+  offer?: string;
   // Faz 5: Platform kuralları ve özel prompt
   platformRulesContext?: string;
   customPromptText?: string;
@@ -198,7 +199,7 @@ export class CommunicatorService {
 - Hedef Kişi: ${ctx.icpLabel}
 - Hedef Pozisyon: ${ctx.jobTitles.join(', ')}
 - Hedef Kişinin Sorunları: ${ctx.painPoints.join(', ')}
-- Sektör: ${ctx.industry}${stepNote}${templateNote}${platformNote}${customNote}${variantNote}${langNote}
+- Sektör: ${ctx.industry}${ctx.offer ? `\n- Özel Teklif/Vaat: ${ctx.offer}` : ''}${stepNote}${templateNote}${platformNote}${customNote}${variantNote}${langNote}
 
 ## ÇIKTI FORMATI (SADECE JSON, başka hiçbir şey yazma):
 {"subject":"string","body":"string","variant":"${variant}"}`;
@@ -275,7 +276,7 @@ export class CommunicatorService {
 - Hedef Pozisyon: ${ctx.jobTitles.join(', ')}
 - Sorunları: ${ctx.painPoints.join(', ')}
 - Ton: ${ctx.toneOfVoice}
-- Dil: ${ctx.targetLanguage}${platformNote}${customNote}${langNote}
+- Dil: ${ctx.targetLanguage}${ctx.offer ? `\n- Özel Teklif/Vaat: ${ctx.offer}` : ''}${platformNote}${customNote}${langNote}
 
 ## ÇIKTI FORMATI (SADECE JSON):
 {

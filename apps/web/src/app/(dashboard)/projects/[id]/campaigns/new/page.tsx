@@ -85,6 +85,7 @@ export default function NewCampaignPage() {
     icpProfileId?: string;
     targetLanguage: string;
     additionalNotes?: string;
+    offer?: string;
     scriptOnly?: boolean;
   }) {
     const token = getToken();

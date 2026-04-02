@@ -40,6 +40,7 @@ export class GenerateCampaignProcessor {
       const settings = (campaign.settings ?? {}) as Record<string, unknown>;
       const targetLanguage = (settings.targetLanguage as string) ?? 'en';
       const icpProfileId = settings.icpProfileId as string | undefined;
+      const offer = settings.offer as string | undefined;
 
       // ── 2. Proje analizini oku ──────────────────────────────────────
       const analysis = await this.db.query.projectAnalysis.findFirst({
@@ -145,6 +146,7 @@ export class GenerateCampaignProcessor {
         painPoints: (icp?.painPoints as string[]) ?? [],
         industry: project?.industry ?? 'saas',
         targetLanguage,
+        offer,
         industryTemplateHint,
         platformRulesContext,       // Faz 5: platform kuralları
         customPromptText: activePrompt?.promptText,  // Faz 5: özel prompt
