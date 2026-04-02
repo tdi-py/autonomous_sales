@@ -177,6 +177,22 @@ export default function NewCampaignPage() {
         </div>
       )}
 
+      {/* Step: Review — no content yet (generation failed/timed out) */}
+      {step === 'review' && !campaignDetail && (
+        <div className="rounded-2xl border border-border bg-card p-8 max-w-xl text-center space-y-4">
+          <p className="text-sm font-medium">İçerik üretilemedi</p>
+          <p className="text-sm text-muted-foreground">
+            Worker servisi çalışmıyor olabilir. Kampanya kaydedildi — daha sonra kampanyalar listesinden tekrar deneyebilirsiniz.
+          </p>
+          <a
+            href={`/projects/${projectId}/campaigns`}
+            className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-border bg-background text-sm hover:bg-accent transition-colors"
+          >
+            Kampanyalar Listesine Dön
+          </a>
+        </div>
+      )}
+
       {/* Step: Review */}
       {step === 'review' && campaignDetail && (
         <div className="space-y-6">

@@ -71,27 +71,22 @@ function computeCallMetrics(calls: CallEvent[]) {
   const completed = calls.filter((c) => c.status === 'call_completed').length;
   const noAnswer = calls.filter((c) => c.status === 'call_no_answer').length;
   const voicemail = calls.filter((c) => c.status === 'call_voicemail').length;
-
   const aiAnalyses = calls
     .map((c) => c.metadata?.aiAnalysis as Record<string, unknown> | undefined)
     .filter(Boolean);
-
   const meetingBooked = aiAnalyses.filter((a) => a?.meeting_booked === true).length;
   const interested = aiAnalyses.filter((a) =>
     a?.outcome === 'interested' || a?.outcome === 'meeting_booked',
   ).length;
-
   const durations = calls
     .map((c) => (c.metadata?.durationSeconds as number) ?? 0)
     .filter((d) => d > 0);
   const avgDuration = durations.length > 0
     ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
     : undefined;
-
   const totalCost = calls
     .map((c) => (c.metadata?.cost as number) ?? 0)
     .reduce((a, b) => a + b, 0);
-
   return { total, completed, noAnswer, voicemail, meetingBooked, interested, avgDuration, totalCost: totalCost > 0 ? totalCost : undefined };
 }
 
@@ -107,16 +102,9 @@ export default function CampaignDetailPage() {
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [showPreflight, setShowPreflight] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [generatingError, setGeneratingError] = useState<string | null>(null);
 
-  const contentStatus = (campaign?.settings?.contentStatus as string) ?? 'pending';
-  const isGenerating = contentStatus === 'generating';
-
-  useCampaignContentStatus({
-    campaignId, enabled: isGenerating,
-    onReady: () => loadCampaign(),
-    onError: () => loadCampaign(),
-  });
-
+  // ── loadCampaign must be declared BEFORE any hook that uses it ───────────
   const loadCampaign = useCallback(async () => {
     const token = getToken();
     try {
@@ -126,29 +114,6 @@ export default function CampaignDetailPage() {
       ]);
       setCampaign(data);
       setMetrics(metricsData);
-
-      // Load call events
-      try {
-        const leadsData = await api.get<{ leads: Array<{ id: string; contactName?: string; companyName?: string }> }>(
-          `/campaigns/${campaignId}/leads`,
-          token,
-        );
-
-        // For each lead, get call outreach events
-        const callEventsRaw: CallEvent[] = [];
-        for (const lead of (leadsData.leads ?? []).slice(0, 50)) {
-          // This would normally be a dedicated endpoint, using campaign leads for now
-          callEventsRaw.push({
-            id: `${lead.id}-placeholder`,
-            leadId: lead.id,
-            contactName: lead.contactName,
-            companyName: lead.companyName,
-            status: 'sent',
-            sentAt: new Date().toISOString(),
-          });
-        }
-        setCallEvents(callEventsRaw);
-      } catch {}
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -157,6 +122,37 @@ export default function CampaignDetailPage() {
   }, [campaignId]);
 
   useEffect(() => { loadCampaign(); }, [loadCampaign]);
+
+  // Load call events separately (non-blocking)
+  useEffect(() => {
+    if (!campaignId) return;
+    const token = getToken();
+    api.get<{ leads: Array<{ id: string; contactName?: string; companyName?: string; classification?: string }> }>(
+      `/campaigns/${campaignId}/leads`,
+      token,
+    ).then((leadsData) => {
+      const events: CallEvent[] = (leadsData.leads ?? []).slice(0, 50).map((lead) => ({
+        id: `${lead.id}-placeholder`,
+        leadId: lead.id,
+        contactName: lead.contactName,
+        companyName: lead.companyName,
+        classification: lead.classification,
+        status: 'sent',
+        sentAt: new Date().toISOString(),
+      }));
+      setCallEvents(events);
+    }).catch(() => {});
+  }, [campaignId]);
+
+  const contentStatus = (campaign?.settings?.contentStatus as string) ?? 'pending';
+  const isGenerating = contentStatus === 'generating';
+
+  useCampaignContentStatus({
+    campaignId,
+    enabled: isGenerating,
+    onReady: () => { setGeneratingError(null); loadCampaign(); },
+    onError: (msg) => { setGeneratingError(msg); loadCampaign(); },
+  });
 
   async function handleRegenerate() {
     const token = getToken();
@@ -209,11 +205,18 @@ export default function CampaignDetailPage() {
     finally { setActionLoading(false); }
   }
 
-  if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
+  if (loading) return (
+    <div className="flex items-center justify-center h-64">
+      <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+    </div>
+  );
+
   if (!campaign) return (
-    <div className="max-w-5xl">
-      <Link href={`/projects/${projectId}/campaigns`} className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" /> Kampanyalar</Link>
-      <p className="text-sm text-destructive mt-4">{error || 'Kampanya bulunamadı.'}</p>
+    <div className="max-w-5xl space-y-4">
+      <Link href={`/projects/${projectId}/campaigns`} className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+        <ArrowLeft className="w-3.5 h-3.5" /> Kampanyalar
+      </Link>
+      <p className="text-sm text-destructive">{error || 'Kampanya bulunamadı.'}</p>
     </div>
   );
 
@@ -221,7 +224,6 @@ export default function CampaignDetailPage() {
   const showCall = campaign.type === 'cold_call' || campaign.type === 'multi_channel';
   const sequences = campaign.sequences?.grouped ?? {};
   const scripts = campaign.scripts ?? [];
-
   const callMetrics = computeCallMetrics(callEvents);
   const eligibleLeads = callEvents.filter((c) => c.classification === 'can_call_ai').length;
 
@@ -267,7 +269,7 @@ export default function CampaignDetailPage() {
             <RefreshCw className={cn('w-4 h-4', (isRegenerating || isGenerating) && 'animate-spin')} />
             Yeniden Üret
           </button>
-          {campaign.status === 'draft' && (
+          {campaign.status === 'draft' && !isGenerating && (
             <button onClick={() => setShowPreflight(true)}
               className="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">
               <Rocket className="w-4 h-4" /> Başlat
@@ -327,6 +329,14 @@ export default function CampaignDetailPage() {
                 </div>
               ))}
             </div>
+            {isGenerating && (
+              <div className="rounded-2xl border border-border bg-card p-8 max-w-lg">
+                <ContentGenerating
+                  contentStatus={generatingError ? 'error' : contentStatus}
+                  contentError={generatingError ?? campaign.settings?.contentError as string | null ?? null}
+                />
+              </div>
+            )}
             {metrics && metrics.sent > 0 && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
@@ -342,18 +352,16 @@ export default function CampaignDetailPage() {
                 ))}
               </div>
             )}
-            {isGenerating && (
-              <div className="rounded-2xl border border-border bg-card p-8 max-w-lg">
-                <ContentGenerating contentStatus={contentStatus} contentError={campaign.settings?.contentError as string | null ?? null} />
-              </div>
-            )}
           </div>
         )}
 
         {activeTab === 'email' && showEmail && (
           isGenerating ? (
             <div className="rounded-2xl border border-border bg-card p-8 max-w-lg">
-              <ContentGenerating contentStatus={contentStatus} contentError={null} />
+              <ContentGenerating
+                contentStatus={generatingError ? 'error' : contentStatus}
+                contentError={generatingError ?? null}
+              />
             </div>
           ) : (
             <EmailSequenceEditor
@@ -365,15 +373,17 @@ export default function CampaignDetailPage() {
 
         {activeTab === 'call' && showCall && (
           <div className="space-y-6">
-            {/* Call script editor */}
             {!isGenerating && (
               <div className="rounded-xl border border-border bg-card p-5">
                 <h3 className="text-sm font-semibold mb-4">Call Senaryosu</h3>
-                <CallScriptEditor campaignId={campaignId} scripts={scripts} scriptOnly={campaign.settings?.scriptOnly as boolean | undefined} onRefresh={loadCampaign} />
+                <CallScriptEditor
+                  campaignId={campaignId}
+                  scripts={scripts}
+                  scriptOnly={campaign.settings?.scriptOnly as boolean | undefined}
+                  onRefresh={loadCampaign}
+                />
               </div>
             )}
-
-            {/* Call metrics */}
             {callEvents.length > 0 && (
               <div>
                 <h3 className="text-sm font-semibold mb-3">Arama Metrikleri</h3>
@@ -389,8 +399,6 @@ export default function CampaignDetailPage() {
                 />
               </div>
             )}
-
-            {/* Bulk call launcher */}
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold">Arama Sonuçları</h3>
               <BulkCallLauncher
@@ -401,8 +409,6 @@ export default function CampaignDetailPage() {
                 onLaunched={loadCampaign}
               />
             </div>
-
-            {/* Call results table */}
             <CallResultsTable calls={callEvents} token={getToken()} />
           </div>
         )}
