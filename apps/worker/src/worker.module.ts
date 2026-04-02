@@ -45,6 +45,8 @@ import { VapiCallService } from './services/vapi-call.service';
 // ── Faz 6 ──────────────────────────────────────────────────────────────────
 import { ComplianceEngineService } from './services/compliance-engine.service';
 import { AbuseDetectorService } from './services/abuse-detector.service';
+import { StrategistService } from './services/strategist.service';
+import { AnalyticsService } from './services/analytics.service';
 
 @Controller('health')
 class HealthController {
@@ -108,6 +110,9 @@ class HealthController {
     // ── Faz 4 ───────────────────────────────────────────────────────────────
     PhoneVerifierService,
     VapiCallService,
+    // ── Faz 5 ───────────────────────────────────────────────────────────────
+    AnalyticsService,
+    StrategistService,
     // ── Faz 6 ───────────────────────────────────────────────────────────────
     ComplianceEngineService,
     AbuseDetectorService,
