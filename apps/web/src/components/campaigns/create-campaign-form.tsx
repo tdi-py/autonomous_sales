@@ -18,6 +18,7 @@ interface CreateCampaignFormProps {
     icpProfileId?: string;
     targetLanguage: string;
     additionalNotes?: string;
+    offer?: string;
     scriptOnly?: boolean;
   }) => void;
   isLoading?: boolean;
@@ -86,6 +87,7 @@ export function CreateCampaignForm({
   const [icpProfileId, setIcpProfileId] = useState(icpProfiles[0]?.id ?? '');
   const [targetLanguage, setTargetLanguage] = useState('en');
   const [additionalNotes, setAdditionalNotes] = useState('');
+  const [offer, setOffer] = useState('');
   const [scriptOnly, setScriptOnly] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -104,6 +106,7 @@ export function CreateCampaignForm({
       icpProfileId: icpProfileId || undefined,
       targetLanguage,
       additionalNotes: additionalNotes.trim() || undefined,
+      offer: offer.trim() || undefined,
       scriptOnly: type === 'cold_call' ? scriptOnly : undefined,
     });
   }
@@ -223,6 +226,24 @@ export function CreateCampaignForm({
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Offer / Special deal */}
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">
+            Özel Teklif / Vaat{' '}
+            <span className="text-muted-foreground font-normal">(opsiyonel)</span>
+          </label>
+          <textarea
+            value={offer}
+            onChange={(e) => setOffer(e.target.value)}
+            rows={2}
+            placeholder="Örn: İlk 100 kullanıcıya ilk 5 siparişi ücretsiz, 30 gün para iade garantisi..."
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+          />
+          <p className="text-xs text-muted-foreground">
+            AI bu teklifi email ve call senaryolarına dahil edecek.
+          </p>
         </div>
 
         {/* Additional notes */}
