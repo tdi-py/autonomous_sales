@@ -39,6 +39,16 @@ export class AnalyzeUrlProcessor {
     cooldowns.set(projectId, Date.now());
 
     try {
+      // ── Step 0: Verify project exists (avoid FK violation on deleted projects) ──
+      const projectExists = await this.db.query.projects.findFirst({
+        where: eq(schema.projects.id, projectId),
+        columns: { id: true },
+      });
+      if (!projectExists) {
+        this.logger.warn(`[analyze-url] Project ${projectId} not found in DB — discarding job ${job.id}`);
+        return { skipped: true, reason: 'project_not_found' };
+      }
+
       // ── Step 1: Validate URL ────────────────────────────────────────────
       try {
         this.scraperService.validateUrl(websiteUrl);

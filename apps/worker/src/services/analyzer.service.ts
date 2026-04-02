@@ -107,6 +107,16 @@ export class AnalyzerService {
   }
 
   async saveToDatabase(projectId: string, result: AnalysisResult, model: string): Promise<void> {
+    // Guard: project must exist before any FK-dependent inserts
+    const projectExists = await this.db.query.projects.findFirst({
+      where: eq(schema.projects.id, projectId),
+      columns: { id: true },
+    });
+    if (!projectExists) {
+      this.logger.warn(`[AnalyzerService] Project ${projectId} not found — skipping DB save`);
+      return;
+    }
+
     const mappedBusinessType = BUSINESS_TYPE_MAP[result.business_type] ?? 'other';
 
     // Update project_analysis
