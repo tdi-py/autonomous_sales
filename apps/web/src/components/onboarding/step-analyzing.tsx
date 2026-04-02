@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle } from 'lucide-react';
 
 const MESSAGES = [
   'Fetching your website...',
@@ -20,12 +20,19 @@ interface StepAnalyzingProps {
 
 export function StepAnalyzing({ onComplete, onError, analysisStatus }: StepAnalyzingProps) {
   const [msgIndex, setMsgIndex] = useState(0);
+  const [slowWarning, setSlowWarning] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => {
       setMsgIndex((i) => (i + 1) % MESSAGES.length);
     }, 2500);
     return () => clearInterval(interval);
+  }, []);
+
+  // Show a "taking longer than expected" warning after 45 seconds
+  useEffect(() => {
+    const timer = setTimeout(() => setSlowWarning(true), 45_000);
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -46,6 +53,13 @@ export function StepAnalyzing({ onComplete, onError, analysisStatus }: StepAnaly
           {MESSAGES[msgIndex]}
         </p>
         <p className="text-xs text-muted-foreground">This usually takes 15-30 seconds</p>
+
+        {slowWarning && (
+          <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+            <span>Taking longer than expected. Make sure the worker service is running and LLM is configured.</span>
+          </div>
+        )}
       </div>
 
       {/* Progress bar */}

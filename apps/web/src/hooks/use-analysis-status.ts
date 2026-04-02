@@ -32,6 +32,7 @@ interface UseAnalysisStatusOptions {
   projectId: string | null;
   token?: string;
   pollingIntervalMs?: number;
+  maxPolls?: number;
   enabled?: boolean;
   onComplete?: (data: AnalysisData) => void;
   onError?: (error: string) => void;
@@ -41,6 +42,7 @@ export function useAnalysisStatus({
   projectId,
   token,
   pollingIntervalMs = 3000,
+  maxPolls = 60,           // 60 × 3s = 3 dakika, sonra timeout
   enabled = true,
   onComplete,
   onError,
@@ -48,6 +50,7 @@ export function useAnalysisStatus({
   const [data, setData] = useState<AnalysisData | null>(null);
   const [isPolling, setIsPolling] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollCountRef = useRef(0);
   const onCompleteRef = useRef(onComplete);
   const onErrorRef = useRef(onError);
 
@@ -59,11 +62,24 @@ export function useAnalysisStatus({
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
+    pollCountRef.current = 0;
     setIsPolling(false);
   }, []);
 
   const poll = useCallback(async () => {
     if (!projectId) return;
+
+    pollCountRef.current += 1;
+
+    // Timeout: max poll sayısına ulaşıldıysa durdur
+    if (pollCountRef.current > maxPolls) {
+      stopPolling();
+      onErrorRef.current?.(
+        'Analysis timed out after 3 minutes. The worker may not be running or the LLM is unreachable. You can fill in the details manually.',
+      );
+      return;
+    }
+
     try {
       const result = await api.get<AnalysisData>(`/projects/${projectId}/analysis`, token);
       setData(result);
@@ -78,11 +94,12 @@ export function useAnalysisStatus({
     } catch (err) {
       console.error('[useAnalysisStatus] poll error:', err);
     }
-  }, [projectId, token, stopPolling]);
+  }, [projectId, token, maxPolls, stopPolling]);
 
   useEffect(() => {
     if (!projectId || !enabled) return;
 
+    pollCountRef.current = 0;
     setIsPolling(true);
     poll(); // immediate first call
 
